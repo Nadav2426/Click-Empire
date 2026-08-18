@@ -3,9 +3,11 @@
 // ---------- Game configuration ----------
 
 const SAVE_KEY = 'clickEmpireSaveV1';
+const PROFILE_KEY = 'clickEmpireProfileV1';
 const AUTO_SAVE_INTERVAL = 5000;
 const COMBO_WINDOW = 850;
 const COMBO_RESET_TIME = 1450;
+const ADMIN_USERNAME = 'TheBradar';
 const CLICK_GUARD = {
   minimumInterval: 26,
   burstWindow: 1000,
@@ -129,6 +131,14 @@ const worldDefinitions = {
   },
 };
 
+const leaderboardRivals = [
+  { username: 'TheBradar', role: 'ADMIN', rebirths: 99, score: 9000000000000000 },
+  { username: 'AtlasAva', role: 'ATHLETE', rebirths: 18, score: 3200000000000 },
+  { username: 'LunaLifter', role: 'ATHLETE', rebirths: 10, score: 540000000000 },
+  { username: 'KettleKai', role: 'ATHLETE', rebirths: 5, score: 47000000000 },
+  { username: 'RookieRae', role: 'ATHLETE', rebirths: 0, score: 4500000 },
+];
+
 const achievementDefinitions = {
   firstClick: { name: 'First Click', icon: '☝', target: 1, progress: () => state.stats.totalClicks },
   hundredCoins: { name: '100 Coins', icon: 'C', target: 100, progress: () => state.stats.totalCoinsEarned },
@@ -182,6 +192,7 @@ function createDefaultState() {
     achievements: {},
     rebirths: 0,
     selectedWorld: 'ironHouse',
+    adminBoostUntil: 0,
     settings: {
       soundEnabled: true,
       musicEnabled: true,
@@ -205,11 +216,13 @@ let goldenCoinTimer = null;
 let goldenCoinExpiryTimer = null;
 let activeGoldenCoin = null;
 let modalPreviouslyFocused = null;
+let playerProfile = null;
 let audioContext = null;
 let lastAchievementSoundTime = -Infinity;
 let musicTimer = null;
 let musicStep = 0;
 const activeMusicOscillators = new Set();
+let adminBoostTimer = null;
 
 // ---------- Cached elements ----------
 
@@ -263,6 +276,24 @@ const elements = {
   saveIndicator: document.getElementById('saveIndicator'),
   saveText: document.getElementById('saveText'),
   saveMeta: document.getElementById('saveMeta'),
+  usernameModal: document.getElementById('usernameModal'),
+  usernameForm: document.getElementById('usernameForm'),
+  usernameInput: document.getElementById('usernameInput'),
+  usernameError: document.getElementById('usernameError'),
+  leaderboardButton: document.getElementById('leaderboardButton'),
+  profileInitial: document.getElementById('profileInitial'),
+  profileName: document.getElementById('profileName'),
+  settingsProfileInitial: document.getElementById('settingsProfileInitial'),
+  settingsProfileName: document.getElementById('settingsProfileName'),
+  leaderboardModal: document.getElementById('leaderboardModal'),
+  closeLeaderboard: document.getElementById('closeLeaderboard'),
+  leaderboardList: document.getElementById('leaderboardList'),
+  playerRank: document.getElementById('playerRank'),
+  playerScore: document.getElementById('playerScore'),
+  adminButton: document.getElementById('adminButton'),
+  adminModal: document.getElementById('adminModal'),
+  closeAdmin: document.getElementById('closeAdmin'),
+  adminStatus: document.getElementById('adminStatus'),
 };
 
 // ---------- Formatting and calculations ----------
@@ -311,6 +342,14 @@ function getPermanentMultiplier() {
   return getRebirthMultiplier() * getWorldMultiplier();
 }
 
+function isAdmin() {
+  return playerProfile?.username === ADMIN_USERNAME;
+}
+
+function getAdminMultiplier() {
+  return isAdmin() && Date.now() < state.adminBoostUntil ? 100 : 1;
+}
+
 function getRebirthCost() {
   return 1000000 * Math.pow(3, state.rebirths);
 }
@@ -324,7 +363,8 @@ function getCoinsPerClick() {
     * Math.pow(2, state.upgrades.megaClick)
     * Math.pow(3, state.upgrades.championBelt)
     * getProductionMultiplier()
-    * getPermanentMultiplier();
+    * getPermanentMultiplier()
+    * getAdminMultiplier();
 }
 
 function getCoinsPerSecond() {
@@ -332,7 +372,7 @@ function getCoinsPerSecond() {
     + state.upgrades.factory * 10
     + state.upgrades.proteinLab * 25
     + state.upgrades.gymFranchise * 250;
-  return baseProduction * getProductionMultiplier() * getPermanentMultiplier();
+  return baseProduction * getProductionMultiplier() * getPermanentMultiplier() * getAdminMultiplier();
 }
 
 function getTotalUpgradeLevels() {
@@ -538,6 +578,161 @@ function toggleMusic() {
   saveGame(false);
 }
 
+// ---------- Player profile and leaderboard ----------
+
+function loadPlayerProfile() {
+  try {
+    const rawProfile = localStorage.getItem(PROFILE_KEY);
+    if (!rawProfile) return null;
+    const savedProfile = JSON.parse(rawProfile);
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(savedProfile.username || '')) return null;
+    return {
+      id: String(savedProfile.id || `local-${savedProfile.createdAt || Date.now()}`),
+      username: savedProfile.username,
+      createdAt: savedProfile.createdAt || new Date().toISOString(),
+    };
+  } catch (error) {
+    console.warn('Click Empire could not read the player profile.', error);
+    return null;
+  }
+}
+
+function getUsernameError(username) {
+  if (playerProfile) return 'This browser already has a locked username.';
+  if (username.length < 3 || username.length > 16) return 'Use between 3 and 16 characters.';
+  if (!/^[A-Za-z0-9_]+$/.test(username)) return 'Only letters, numbers, and underscores are allowed.';
+
+  const lowercaseName = username.toLowerCase();
+  if (lowercaseName === ADMIN_USERNAME.toLowerCase() && username !== ADMIN_USERNAME) {
+    return 'That administrator username is reserved and case-sensitive.';
+  }
+
+  const reservedRival = leaderboardRivals.some((rival) => (
+    rival.username.toLowerCase() === lowercaseName && rival.username !== ADMIN_USERNAME
+  ));
+  if (reservedRival) return 'That username is already registered in the local league.';
+  return '';
+}
+
+function applyPlayerProfile() {
+  if (!playerProfile) return;
+  const initial = playerProfile.username.charAt(0).toUpperCase();
+  elements.profileInitial.textContent = initial;
+  elements.profileName.textContent = playerProfile.username;
+  elements.settingsProfileInitial.textContent = initial;
+  elements.settingsProfileName.textContent = playerProfile.username;
+  elements.adminButton.hidden = !isAdmin();
+  elements.leaderboardButton.classList.toggle('admin-profile', isAdmin());
+}
+
+function showUsernameSetup() {
+  elements.usernameModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  elements.usernameInput.value = '';
+  elements.usernameError.textContent = '';
+  elements.usernameInput.focus();
+}
+
+function registerPlayer(event) {
+  event.preventDefault();
+  if (playerProfile) return;
+
+  const username = elements.usernameInput.value.trim();
+  const validationError = getUsernameError(username);
+  if (validationError) {
+    elements.usernameError.textContent = validationError;
+    elements.usernameInput.setAttribute('aria-invalid', 'true');
+    return;
+  }
+
+  const createdAt = new Date().toISOString();
+  const profile = {
+    id: globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    username,
+    createdAt,
+  };
+
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    playerProfile = profile;
+  } catch (error) {
+    console.warn('Click Empire could not save the player profile.', error);
+    elements.usernameError.textContent = 'This browser could not save your username. Check storage permissions and try again.';
+    return;
+  }
+
+  elements.usernameInput.setAttribute('aria-invalid', 'false');
+  elements.usernameModal.hidden = true;
+  document.body.style.overflow = '';
+  applyPlayerProfile();
+  renderLeaderboard();
+  startBackgroundMusic();
+  showNotification(`Welcome, ${username}`, isAdmin() ? 'Administrator controls are now available.' : 'Your permanent athlete profile is ready.', 'info');
+}
+
+function getEmpireScore() {
+  return Math.floor(
+    state.stats.totalCoinsEarned
+    + state.rebirths * 1000000000
+    + getTotalUpgradeLevels() * 1000000,
+  );
+}
+
+function getLeaderboardEntries() {
+  const playerName = playerProfile?.username.toLowerCase();
+  const entries = leaderboardRivals
+    .filter((rival) => rival.username.toLowerCase() !== playerName)
+    .map((rival) => ({ ...rival, isPlayer: false, world: 'League Rival' }));
+
+  if (playerProfile) {
+    entries.push({
+      username: playerProfile.username,
+      role: isAdmin() ? 'ADMIN' : 'ATHLETE',
+      rebirths: state.rebirths,
+      score: getEmpireScore(),
+      isPlayer: true,
+      world: worldDefinitions[state.selectedWorld]?.name || 'Iron House',
+    });
+  }
+
+  return entries
+    .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+function renderLeaderboard() {
+  const entries = getLeaderboardEntries();
+  const playerEntry = entries.find((entry) => entry.isPlayer);
+  elements.playerRank.textContent = playerEntry ? `#${playerEntry.rank}` : '#—';
+  elements.playerScore.textContent = formatNumber(playerEntry?.score || 0);
+  elements.leaderboardList.innerHTML = entries.map((entry) => `
+    <div class="leaderboard-row${entry.isPlayer ? ' is-player' : ''}${entry.role === 'ADMIN' ? ' is-admin' : ''}">
+      <span class="leaderboard-rank">${entry.rank <= 3 ? ['Ⅰ', 'Ⅱ', 'Ⅲ'][entry.rank - 1] : `#${entry.rank}`}</span>
+      <span class="leaderboard-athlete">
+        <span class="leaderboard-avatar" aria-hidden="true">${entry.username.charAt(0).toUpperCase()}</span>
+        <span><strong>${entry.username}</strong><small>${entry.role}${entry.isPlayer ? ` · ${entry.world}` : ''}</small></span>
+      </span>
+      <span class="leaderboard-rebirths">${formatNumber(entry.rebirths)}</span>
+      <strong class="leaderboard-score">${formatNumber(entry.score)}</strong>
+    </div>
+  `).join('');
+}
+
+function openLeaderboard() {
+  if (!playerProfile) return;
+  modalPreviouslyFocused = document.activeElement;
+  renderLeaderboard();
+  elements.leaderboardModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  elements.closeLeaderboard.focus();
+}
+
+function closeLeaderboard() {
+  elements.leaderboardModal.hidden = true;
+  document.body.style.overflow = '';
+  modalPreviouslyFocused?.focus();
+}
+
 // ---------- Rendering ----------
 
 function buildUpgradeShop() {
@@ -616,6 +811,8 @@ function renderGame() {
   renderMilestone();
   renderRebirth();
   renderWorlds();
+  if (!elements.leaderboardModal.hidden) renderLeaderboard();
+  if (isAdmin() && !elements.adminModal.hidden) renderAdminStatus();
 }
 
 function renderRebirth() {
@@ -888,6 +1085,103 @@ function selectWorld(key) {
   showNotification(`Entered ${world.name}`, `World production bonus set to x${formatNumber(world.multiplier)}.`, 'info');
 }
 
+// ---------- Local administrator controls ----------
+
+function renderAdminStatus(message = '') {
+  if (!isAdmin()) return;
+  if (message) {
+    elements.adminStatus.textContent = message;
+    return;
+  }
+
+  const remainingSeconds = Math.max(0, Math.ceil((state.adminBoostUntil - Date.now()) / 1000));
+  elements.adminStatus.textContent = remainingSeconds > 0
+    ? `Overdrive active · x100 production for ${remainingSeconds}s`
+    : 'Admin systems ready.';
+}
+
+function openAdmin() {
+  if (!isAdmin()) return;
+  modalPreviouslyFocused = document.activeElement;
+  renderAdminStatus();
+  elements.adminModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  elements.closeAdmin.focus();
+}
+
+function closeAdmin() {
+  elements.adminModal.hidden = true;
+  document.body.style.overflow = '';
+  modalPreviouslyFocused?.focus();
+}
+
+function runAdminAction(action) {
+  if (!isAdmin()) return;
+  let message = '';
+
+  switch (action) {
+    case 'addMillion':
+      addCoins(1000000);
+      message = 'Added 1M coins to the treasury.';
+      break;
+    case 'addRebirth': {
+      state.rebirths += 1;
+      const unlockedWorld = Object.entries(worldDefinitions).find(([, world]) => world.requiredRebirths === state.rebirths);
+      if (unlockedWorld) state.selectedWorld = unlockedWorld[0];
+      message = `Rebirth count advanced to ${state.rebirths}.`;
+      break;
+    }
+    case 'spawnGolden':
+      window.clearTimeout(goldenCoinExpiryTimer);
+      activeGoldenCoin?.remove();
+      activeGoldenCoin = null;
+      closeAdmin();
+      spawnGoldenCoin();
+      message = 'Golden Coin event spawned.';
+      break;
+    case 'unlockWorlds':
+      state.rebirths = Math.max(state.rebirths, 25);
+      state.selectedWorld = 'olympusArena';
+      message = 'All worlds unlocked. Olympus Arena equipped.';
+      break;
+    case 'coinRain':
+      addCoins(1000000000000);
+      message = 'Admin abuse: 1T coins added.';
+      break;
+    case 'maxUpgrades':
+      Object.keys(state.upgrades).forEach((key) => {
+        state.upgrades[key] = 25;
+      });
+      message = 'Admin abuse: every upgrade set to level 25.';
+      break;
+    case 'overdrive':
+      state.adminBoostUntil = Date.now() + 60000;
+      window.clearTimeout(adminBoostTimer);
+      adminBoostTimer = window.setTimeout(() => {
+        renderGame();
+        renderAdminStatus('Overdrive ended. Production returned to normal.');
+      }, 60050);
+      message = 'Admin abuse: x100 production active for 60 seconds.';
+      break;
+    case 'allAchievements':
+      Object.keys(achievementDefinitions).forEach((key) => {
+        state.achievements[key] = true;
+      });
+      message = 'Admin abuse: every achievement completed.';
+      break;
+    default:
+      return;
+  }
+
+  checkAchievements();
+  playWorldSound();
+  renderGame();
+  renderLeaderboard();
+  renderAdminStatus(message);
+  saveGame(false);
+  showNotification('Admin Action', message, 'info');
+}
+
 function gameTick(now) {
   const deltaSeconds = Math.min((now - lastTickTime) / 1000, 1);
   lastTickTime = now;
@@ -1075,6 +1369,7 @@ function loadGame() {
       ),
       rebirths: savedRebirths,
       selectedWorld: savedWorld,
+      adminBoostUntil: getSafeNumber(saved.adminBoostUntil),
       settings: {
         soundEnabled: saved.settings?.soundEnabled !== false,
         musicEnabled: saved.settings?.musicEnabled !== false,
@@ -1146,9 +1441,10 @@ function closeWorlds() {
 }
 
 function resetGame() {
-  const confirmed = window.confirm('Reset your entire Click Empire? This permanently deletes all coins, upgrades, stats, and achievements.');
+  const confirmed = window.confirm('Reset your Click Empire progress? Coins, upgrades, stats, rebirths, worlds, and achievements will be deleted. Your locked username will stay.');
   if (!confirmed) return;
 
+  window.clearTimeout(adminBoostTimer);
   window.clearTimeout(goldenCoinTimer);
   window.clearTimeout(goldenCoinExpiryTimer);
   activeGoldenCoin?.remove();
@@ -1192,10 +1488,24 @@ elements.resetButton.addEventListener('click', resetGame);
 elements.rebirthButton.addEventListener('click', performRebirth);
 elements.worldsButton.addEventListener('click', openWorlds);
 elements.closeWorlds.addEventListener('click', closeWorlds);
+elements.leaderboardButton.addEventListener('click', openLeaderboard);
+elements.closeLeaderboard.addEventListener('click', closeLeaderboard);
+elements.adminButton.addEventListener('click', openAdmin);
+elements.closeAdmin.addEventListener('click', closeAdmin);
+elements.usernameForm.addEventListener('submit', registerPlayer);
+elements.usernameInput.addEventListener('input', () => {
+  elements.usernameError.textContent = '';
+  elements.usernameInput.setAttribute('aria-invalid', 'false');
+});
 
 elements.worldList.addEventListener('click', (event) => {
   const button = event.target.closest('[data-world-select]');
   if (button) selectWorld(button.dataset.worldSelect);
+});
+
+elements.adminModal.addEventListener('click', (event) => {
+  const actionButton = event.target.closest('[data-admin-action]');
+  if (actionButton) runAdminAction(actionButton.dataset.adminAction);
 });
 
 elements.settingsModal.addEventListener('click', (event) => {
@@ -1206,9 +1516,19 @@ elements.worldsModal.addEventListener('click', (event) => {
   if (event.target === elements.worldsModal) closeWorlds();
 });
 
+elements.leaderboardModal.addEventListener('click', (event) => {
+  if (event.target === elements.leaderboardModal) closeLeaderboard();
+});
+
+elements.adminModal.addEventListener('click', (event) => {
+  if (event.target === elements.adminModal) closeAdmin();
+});
+
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !elements.settingsModal.hidden) closeSettings();
   if (event.key === 'Escape' && !elements.worldsModal.hidden) closeWorlds();
+  if (event.key === 'Escape' && !elements.leaderboardModal.hidden) closeLeaderboard();
+  if (event.key === 'Escape' && !elements.adminModal.hidden) closeAdmin();
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -1223,12 +1543,15 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('beforeunload', () => saveGame(false));
 window.setInterval(() => saveGame(false), AUTO_SAVE_INTERVAL);
 
+playerProfile = loadPlayerProfile();
 buildUpgradeShop();
 buildAchievements();
 buildWorlds();
 loadGame();
+applyPlayerProfile();
 checkAchievements(true);
 renderGame();
+renderLeaderboard();
 updateComboDisplay();
 updateSoundControls();
 updateMusicControls();
@@ -1236,3 +1559,4 @@ updateSaveStatus();
 requestAnimationFrame(updateAnimatedBalance);
 requestAnimationFrame(gameTick);
 scheduleGoldenCoin();
+if (!playerProfile) showUsernameSetup();
