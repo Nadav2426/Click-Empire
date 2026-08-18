@@ -10,7 +10,7 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_BbQ01AFUj1QGi9mRU6N4sg_W56Y7J5W
 const AUTO_SAVE_INTERVAL = 5000;
 const CLOUD_SAVE_INTERVAL = 15000;
 const PRESENCE_HEARTBEAT_INTERVAL = 25000;
-const ADMIN_EVENT_POLL_INTERVAL = 5000;
+const ADMIN_EVENT_POLL_INTERVAL = 1500;
 const COMBO_WINDOW = 850;
 const COMBO_RESET_TIME = 1450;
 const CLICK_GUARD = {
@@ -1063,6 +1063,23 @@ function applyOnlineAdminEvent(event) {
   return true;
 }
 
+function consumeOnlineAdminEvents(events) {
+  let gameChanged = false;
+  for (const event of Array.isArray(events) ? events : []) {
+    const eventId = Number(event.id) || 0;
+    if (!eventId || eventId <= lastAdminEventId) continue;
+    lastAdminEventId = eventId;
+    gameChanged = applyOnlineAdminEvent(event) || gameChanged;
+  }
+  if (gameChanged) {
+    checkAchievements();
+    renderGame();
+    renderLeaderboard();
+    saveGame(false);
+  }
+  return gameChanged;
+}
+
 async function pollAdminEvents() {
   if (!playerProfile || document.hidden || adminEventPollInFlight) return;
   adminEventPollInFlight = true;
@@ -1073,17 +1090,7 @@ async function pollAdminEvents() {
     const events = await supabaseRequest(`/rest/v1/admin_events?id=gt.${lastAdminEventId}&select=id,event_type,payload,created_at&order=id.asc&limit=50`, {
       accessToken: session.access_token,
     });
-    let gameChanged = false;
-    for (const event of Array.isArray(events) ? events : []) {
-      lastAdminEventId = Math.max(lastAdminEventId, Number(event.id) || 0);
-      gameChanged = applyOnlineAdminEvent(event) || gameChanged;
-    }
-    if (gameChanged) {
-      checkAchievements();
-      renderGame();
-      renderLeaderboard();
-      saveGame(false);
-    }
+    consumeOnlineAdminEvents(events);
   } catch (error) {
     console.warn('Click Empire could not receive a live admin event.', error);
   } finally {
@@ -1509,6 +1516,12 @@ async function broadcastAdminEvent(eventType, payload = {}) {
   if (!adminEventCursorReady && eventId > 0) {
     lastAdminEventId = eventId - 1;
     adminEventCursorReady = true;
+  }
+  if (eventId > lastAdminEventId) {
+    const events = await supabaseRequest(`/rest/v1/admin_events?id=gt.${lastAdminEventId}&id=lte.${eventId}&select=id,event_type,payload,created_at&order=id.asc`, {
+      accessToken: session.access_token,
+    });
+    consumeOnlineAdminEvents(events);
   }
   await pollAdminEvents();
 }
