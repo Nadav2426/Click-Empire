@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b1a">
+  <meta name="description" content="Put in the reps and build your Click Empire.">
+  <title>Click Empire</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <div class="game-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Click Empire home">
+        <span class="brand-mark" aria-hidden="true">C</span>
+        <span>
+          <strong>CLICK EMPIRE</strong>
+          <small>TRAIN. LIFT. EARN.</small>
+        </span>
+      </a>
+
+      <div class="topbar-actions">
+        <div class="save-indicator" id="saveIndicator" aria-live="polite">
+          <span class="save-dot"></span>
+          <span id="saveText">Progress saved</span>
+        </div>
+        <button class="world-button" id="worldsButton" type="button" aria-label="Open worlds">
+          <span>WORLD</span>
+          <strong id="currentWorldName">Iron House</strong>
+        </button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="Open settings" title="Settings">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="resource-bar" aria-label="Empire overview">
+        <div class="resource-main">
+          <span class="mini-coin" aria-hidden="true">C</span>
+          <div>
+            <span class="resource-label">TRAINING WALLET</span>
+            <strong class="coin-balance" id="coinBalance">0</strong>
+            <span class="resource-unit">coins</span>
+          </div>
+        </div>
+        <div class="resource-income">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          <span><strong id="incomeRate">+0</strong> / second</span>
+        </div>
+      </section>
+
+      <div class="dashboard-grid">
+        <aside class="left-column">
+          <section class="panel stats-panel" aria-labelledby="statsTitle">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">TRAINING LOG</span>
+                <h2 id="statsTitle">Performance</h2>
+              </div>
+              <span class="status-chip"><i></i> MANUAL MODE</span>
+            </div>
+
+            <div class="stat-list">
+              <div class="stat-row">
+                <span class="stat-icon click-icon" aria-hidden="true">↗</span>
+                <span class="stat-copy">Coins per click<small>Manual income</small></span>
+                <strong id="coinsPerClick">1</strong>
+              </div>
+              <div class="stat-row">
+                <span class="stat-icon income-icon" aria-hidden="true">⌁</span>
+                <span class="stat-copy">Coins per second<small>Passive income</small></span>
+                <strong id="coinsPerSecond">0</strong>
+              </div>
+              <div class="stat-row">
+                <span class="stat-icon total-icon" aria-hidden="true">◉</span>
+                <span class="stat-copy">Total coins earned<small>All-time wealth</small></span>
+                <strong id="totalCoins">0</strong>
+              </div>
+              <div class="stat-row">
+                <span class="stat-icon cursor-icon" aria-hidden="true">⌁</span>
+                <span class="stat-copy">Total clicks<small>Lifetime taps</small></span>
+                <strong id="totalClicks">0</strong>
+              </div>
+              <div class="stat-row">
+                <span class="stat-icon rebirth-icon" aria-hidden="true">↻</span>
+                <span class="stat-copy">Rebirths<small>Permanent strength</small></span>
+                <strong id="rebirthCount">0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel achievements-panel" aria-labelledby="achievementsTitle">
+            <div class="panel-heading compact">
+              <div>
+                <span class="eyebrow">PERSONAL RECORDS</span>
+                <h2 id="achievementsTitle">PR Board</h2>
+              </div>
+              <strong class="achievement-count"><span id="achievementCount">0</span>/<span id="achievementTotal">15</span></strong>
+            </div>
+            <div class="achievement-list" id="achievementList"></div>
+          </section>
+        </aside>
+
+        <section class="click-zone" aria-labelledby="clickZoneTitle">
+          <div class="click-heading">
+            <span class="eyebrow">EVERY EMPIRE STARTS WITH ONE REP</span>
+            <h1 id="clickZoneTitle">Put in the reps.</h1>
+            <p>Press the plate. Build your fortune.</p>
+          </div>
+
+          <div class="coin-stage" id="coinStage">
+            <div class="orbit orbit-one" aria-hidden="true"></div>
+            <div class="orbit orbit-two" aria-hidden="true"></div>
+            <button class="main-coin" id="mainCoin" type="button" aria-label="Earn coins">
+              <span class="coin-face">
+                <span class="coin-shine" aria-hidden="true"></span>
+                <span class="coin-letter" aria-hidden="true">CE</span>
+                <span class="coin-stars" aria-hidden="true">25 LB</span>
+              </span>
+            </button>
+          </div>
+
+          <div class="click-reward" aria-live="polite">
+            <span>+<strong id="clickReward">1</strong></span>
+            <small>coins per rep</small>
+          </div>
+
+          <div class="combo-card" id="comboCard">
+            <div class="combo-copy">
+              <span><i class="combo-flame" aria-hidden="true">◆</i> REP STREAK</span>
+              <strong id="comboMultiplier">x1.00</strong>
+            </div>
+            <div class="combo-track" role="progressbar" aria-label="Click combo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="comboFill"></span>
+            </div>
+            <small id="comboHint">Tap rapidly to build your multiplier</small>
+            <small class="guard-status" id="inputGuard"><i aria-hidden="true"></i> Manual input guard · up to 22 taps/sec</small>
+          </div>
+
+          <section class="milestone-card" aria-label="Next empire milestone">
+            <div>
+              <span class="eyebrow">NEXT RANK</span>
+              <strong id="milestoneTitle">Warm-Up</strong>
+            </div>
+            <span id="milestoneProgress">0 / 100</span>
+            <div class="milestone-track"><span id="milestoneFill"></span></div>
+          </section>
+
+          <section class="rebirth-card" aria-labelledby="rebirthTitle">
+            <div class="rebirth-mark" aria-hidden="true">↻</div>
+            <div class="rebirth-copy">
+              <span class="eyebrow">REBIRTH PROGRAM</span>
+              <strong id="rebirthTitle">Reset. Return stronger.</strong>
+              <p>Trade this run for permanent power and unlock new worlds.</p>
+            </div>
+            <div class="rebirth-metrics">
+              <span><small>REBIRTHS</small><strong id="rebirthCardCount">0</strong></span>
+              <span><small>PERMANENT BOOST</small><strong id="rebirthMultiplier">x1</strong></span>
+            </div>
+            <div class="rebirth-progress" role="progressbar" aria-label="Progress to next rebirth" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="rebirthProgressFill"></span>
+            </div>
+            <button class="rebirth-button" id="rebirthButton" type="button">
+              REBIRTH AT <span class="cost-coin" aria-hidden="true">C</span> <span id="rebirthCost">1M</span>
+            </button>
+          </section>
+        </section>
+
+        <aside class="right-column">
+          <section class="shop-panel" aria-labelledby="shopTitle">
+            <div class="shop-header">
+              <div>
+                <span class="eyebrow">STRENGTH PROGRAM</span>
+                <h2 id="shopTitle">Training Floor</h2>
+              </div>
+              <span class="shop-icon" aria-hidden="true">⌂</span>
+            </div>
+
+            <div class="upgrade-list" id="upgradeList"></div>
+
+            <p class="shop-tip"><span aria-hidden="true">▲</span> Every new level takes more work. Train wisely.</p>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <span>CLICK EMPIRE</span>
+      <span>•</span>
+      <span>EST. 2026 · NO SHORTCUTS · AUTOSAVE ON</span>
+    </footer>
+  </div>
+
+  <div class="notification-stack" id="notificationStack" aria-live="polite" aria-atomic="true"></div>
+  <div id="goldenCoinLayer"></div>
+
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <button class="modal-close" id="closeSettings" type="button" aria-label="Close settings">×</button>
+      <span class="eyebrow">LOCKER ROOM</span>
+      <h2 id="settingsTitle">Game Settings</h2>
+      <p>Your progress is saved automatically in this browser.</p>
+      <button class="settings-action sound-action" id="soundToggle" type="button" aria-pressed="true">
+        <span aria-hidden="true">♪</span>
+        <span><strong>Sound Effects</strong><small id="soundStatus">On · plates, upgrades, and achievements</small></span>
+        <span class="sound-switch" id="soundSwitch" aria-hidden="true">ON</span>
+      </button>
+      <button class="settings-action sound-action" id="musicToggle" type="button" aria-pressed="true">
+        <span aria-hidden="true">♫</span>
+        <span><strong>Chill Background Music</strong><small id="musicStatus">On · starts after your first rep</small></span>
+        <span class="sound-switch" id="musicSwitch" aria-hidden="true">ON</span>
+      </button>
+      <button class="settings-action primary-action" id="saveButton" type="button">
+        <span aria-hidden="true">◆</span>
+        <span><strong>Save Game</strong><small>Save your progress right now</small></span>
+      </button>
+      <button class="settings-action danger-action" id="resetButton" type="button">
+        <span aria-hidden="true">↻</span>
+        <span><strong>Reset Game</strong><small>Delete all progress and start over</small></span>
+      </button>
+      <small class="save-meta" id="saveMeta">No manual save yet</small>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="worldsModal" hidden>
+    <section class="worlds-modal" role="dialog" aria-modal="true" aria-labelledby="worldsTitle">
+      <button class="modal-close" id="closeWorlds" type="button" aria-label="Close worlds">×</button>
+      <span class="eyebrow">TRAIN BEYOND THE IRON HOUSE</span>
+      <h2 id="worldsTitle">Worlds</h2>
+      <p>Rebirth to unlock new training grounds. Every world adds a permanent production bonus while equipped.</p>
+      <div class="world-list" id="worldList"></div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
