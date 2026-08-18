@@ -3,11 +3,14 @@
 // ---------- Game configuration ----------
 
 const SAVE_KEY = 'clickEmpireSaveV1';
-const PROFILE_KEY = 'clickEmpireProfileV1';
+const LEGACY_PROFILE_KEY = 'clickEmpireProfileV1';
+const AUTH_SESSION_KEY = 'clickEmpireAuthSessionV1';
+const SUPABASE_URL = 'https://dknoykvdvbiyopkfmtig.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_BbQ01AFUj1QGi9mRU6N4sg_W56Y7J5W';
 const AUTO_SAVE_INTERVAL = 5000;
+const CLOUD_SAVE_INTERVAL = 15000;
 const COMBO_WINDOW = 850;
 const COMBO_RESET_TIME = 1450;
-const ADMIN_USERNAME = 'TheBradar';
 const CLICK_GUARD = {
   minimumInterval: 26,
   burstWindow: 1000,
@@ -131,14 +134,6 @@ const worldDefinitions = {
   },
 };
 
-const leaderboardRivals = [
-  { username: 'TheBradar', role: 'ADMIN', rebirths: 99, score: 9000000000000000 },
-  { username: 'AtlasAva', role: 'ATHLETE', rebirths: 18, score: 3200000000000 },
-  { username: 'LunaLifter', role: 'ATHLETE', rebirths: 10, score: 540000000000 },
-  { username: 'KettleKai', role: 'ATHLETE', rebirths: 5, score: 47000000000 },
-  { username: 'RookieRae', role: 'ATHLETE', rebirths: 0, score: 4500000 },
-];
-
 const achievementDefinitions = {
   firstClick: { name: 'First Click', icon: '☝', target: 1, progress: () => state.stats.totalClicks },
   hundredCoins: { name: '100 Coins', icon: 'C', target: 100, progress: () => state.stats.totalCoinsEarned },
@@ -217,6 +212,11 @@ let goldenCoinExpiryTimer = null;
 let activeGoldenCoin = null;
 let modalPreviouslyFocused = null;
 let playerProfile = null;
+let authSession = null;
+let authMode = 'signup';
+let onlineLeaderboardEntries = [];
+let lastCloudSaveTime = 0;
+let cloudSaveInFlight = null;
 let audioContext = null;
 let lastAchievementSoundTime = -Infinity;
 let musicTimer = null;
@@ -276,20 +276,33 @@ const elements = {
   saveIndicator: document.getElementById('saveIndicator'),
   saveText: document.getElementById('saveText'),
   saveMeta: document.getElementById('saveMeta'),
+  signOutButton: document.getElementById('signOutButton'),
   usernameModal: document.getElementById('usernameModal'),
   usernameForm: document.getElementById('usernameForm'),
   usernameInput: document.getElementById('usernameInput'),
+  usernameField: document.getElementById('usernameField'),
+  emailInput: document.getElementById('emailInput'),
+  passwordInput: document.getElementById('passwordInput'),
   usernameError: document.getElementById('usernameError'),
+  authSubmit: document.getElementById('authSubmit'),
+  authEyebrow: document.getElementById('authEyebrow'),
+  usernameTitle: document.getElementById('usernameTitle'),
+  authDescription: document.getElementById('authDescription'),
+  authNote: document.getElementById('authNote'),
+  signUpTab: document.getElementById('signUpTab'),
+  signInTab: document.getElementById('signInTab'),
   leaderboardButton: document.getElementById('leaderboardButton'),
   profileInitial: document.getElementById('profileInitial'),
   profileName: document.getElementById('profileName'),
   settingsProfileInitial: document.getElementById('settingsProfileInitial'),
   settingsProfileName: document.getElementById('settingsProfileName'),
+  settingsProfileEmail: document.getElementById('settingsProfileEmail'),
   leaderboardModal: document.getElementById('leaderboardModal'),
   closeLeaderboard: document.getElementById('closeLeaderboard'),
   leaderboardList: document.getElementById('leaderboardList'),
   playerRank: document.getElementById('playerRank'),
   playerScore: document.getElementById('playerScore'),
+  leaderboardStatus: document.getElementById('leaderboardStatus'),
   adminButton: document.getElementById('adminButton'),
   adminModal: document.getElementById('adminModal'),
   closeAdmin: document.getElementById('closeAdmin'),
@@ -343,7 +356,7 @@ function getPermanentMultiplier() {
 }
 
 function isAdmin() {
-  return playerProfile?.username === ADMIN_USERNAME;
+  return playerProfile?.role === 'ADMIN';
 }
 
 function getAdminMultiplier() {
@@ -580,38 +593,125 @@ function toggleMusic() {
 
 // ---------- Player profile and leaderboard ----------
 
-function loadPlayerProfile() {
+function getLegacyUsername() {
   try {
-    const rawProfile = localStorage.getItem(PROFILE_KEY);
+    const rawProfile = localStorage.getItem(LEGACY_PROFILE_KEY);
     if (!rawProfile) return null;
     const savedProfile = JSON.parse(rawProfile);
-    if (!/^[A-Za-z0-9_]{3,16}$/.test(savedProfile.username || '')) return null;
-    return {
-      id: String(savedProfile.id || `local-${savedProfile.createdAt || Date.now()}`),
-      username: savedProfile.username,
-      createdAt: savedProfile.createdAt || new Date().toISOString(),
-    };
+    return /^[A-Za-z0-9_]{3,16}$/.test(savedProfile.username || '') ? savedProfile.username : '';
   } catch (error) {
-    console.warn('Click Empire could not read the player profile.', error);
-    return null;
+    return '';
   }
 }
 
 function getUsernameError(username) {
-  if (playerProfile) return 'This browser already has a locked username.';
+  if (playerProfile) return 'This player account already has a locked username.';
   if (username.length < 3 || username.length > 16) return 'Use between 3 and 16 characters.';
   if (!/^[A-Za-z0-9_]+$/.test(username)) return 'Only letters, numbers, and underscores are allowed.';
+  return '';
+}
 
-  const lowercaseName = username.toLowerCase();
-  if (lowercaseName === ADMIN_USERNAME.toLowerCase() && username !== ADMIN_USERNAME) {
-    return 'That administrator username is reserved and case-sensitive.';
+function normalizeAuthSession(payload) {
+  if (!payload?.access_token || !payload?.refresh_token) return null;
+  return {
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+    expires_at: Date.now() + Math.max(30, Number(payload.expires_in) || 3600) * 1000,
+    user: payload.user || null,
+  };
+}
+
+function persistAuthSession(session) {
+  authSession = session;
+  try {
+    if (session) localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(AUTH_SESSION_KEY);
+  } catch (error) {
+    console.warn('Click Empire could not store the account session.', error);
+  }
+}
+
+async function supabaseRequest(path, options = {}) {
+  const headers = {
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+    ...options.headers,
+  };
+  if (options.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+
+  const response = await fetch(`${SUPABASE_URL}${path}`, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    keepalive: Boolean(options.keepalive),
+  });
+  const responseText = await response.text();
+  let payload = null;
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch (error) {
+      payload = responseText;
+    }
   }
 
-  const reservedRival = leaderboardRivals.some((rival) => (
-    rival.username.toLowerCase() === lowercaseName && rival.username !== ADMIN_USERNAME
-  ));
-  if (reservedRival) return 'That username is already registered in the local league.';
-  return '';
+  if (!response.ok) {
+    const message = payload?.msg || payload?.message || payload?.error_description || payload?.error || `Online request failed (${response.status}).`;
+    const requestError = new Error(message);
+    requestError.status = response.status;
+    requestError.payload = payload;
+    throw requestError;
+  }
+  return payload;
+}
+
+async function refreshAuthSession() {
+  if (!authSession?.refresh_token) return null;
+  try {
+    const payload = await supabaseRequest('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      body: { refresh_token: authSession.refresh_token },
+    });
+    const refreshedSession = normalizeAuthSession(payload);
+    persistAuthSession(refreshedSession);
+    return refreshedSession;
+  } catch (error) {
+    persistAuthSession(null);
+    return null;
+  }
+}
+
+async function getActiveAuthSession() {
+  if (!authSession) return null;
+  if (authSession.expires_at > Date.now() + 60000) return authSession;
+  return refreshAuthSession();
+}
+
+async function restoreAuthSession() {
+  try {
+    const storedSession = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null');
+    if (!storedSession?.access_token || !storedSession?.refresh_token) return null;
+    authSession = storedSession;
+    return getActiveAuthSession();
+  } catch (error) {
+    persistAuthSession(null);
+    return null;
+  }
+}
+
+async function fetchPlayerProfile() {
+  const session = await getActiveAuthSession();
+  if (!session?.user?.id) return null;
+  const profiles = await supabaseRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(session.user.id)}&select=id,username,role,created_at`, {
+    accessToken: session.access_token,
+  });
+  const profile = Array.isArray(profiles) ? profiles[0] : null;
+  return profile ? { ...profile, email: session.user.email || '' } : null;
+}
+
+async function isUsernameTaken(username) {
+  const profiles = await supabaseRequest(`/rest/v1/profiles?username_key=eq.${encodeURIComponent(username.toLowerCase())}&select=id&limit=1`);
+  return Array.isArray(profiles) && profiles.length > 0;
 }
 
 function applyPlayerProfile() {
@@ -621,53 +721,156 @@ function applyPlayerProfile() {
   elements.profileName.textContent = playerProfile.username;
   elements.settingsProfileInitial.textContent = initial;
   elements.settingsProfileName.textContent = playerProfile.username;
+  elements.settingsProfileEmail.textContent = playerProfile.email || 'Cloud account connected';
   elements.adminButton.hidden = !isAdmin();
   elements.leaderboardButton.classList.toggle('admin-profile', isAdmin());
 }
 
-function showUsernameSetup() {
-  elements.usernameModal.hidden = false;
-  document.body.style.overflow = 'hidden';
-  elements.usernameInput.value = '';
-  elements.usernameError.textContent = '';
-  elements.usernameInput.focus();
+function setAuthMessage(message = '', success = false) {
+  elements.usernameError.textContent = message;
+  elements.usernameError.classList.toggle('is-success', success);
 }
 
-function registerPlayer(event) {
+function setAuthMode(mode) {
+  authMode = mode === 'signin' ? 'signin' : 'signup';
+  const isSignUp = authMode === 'signup';
+  elements.usernameField.hidden = !isSignUp;
+  elements.usernameInput.required = isSignUp;
+  elements.passwordInput.autocomplete = isSignUp ? 'new-password' : 'current-password';
+  elements.signUpTab.classList.toggle('is-active', isSignUp);
+  elements.signInTab.classList.toggle('is-active', !isSignUp);
+  elements.signUpTab.setAttribute('aria-selected', String(isSignUp));
+  elements.signInTab.setAttribute('aria-selected', String(!isSignUp));
+  elements.authEyebrow.textContent = isSignUp ? 'ONLINE ATHLETE REGISTRATION' : 'RETURNING ATHLETE';
+  elements.usernameTitle.textContent = isSignUp ? 'Claim your locker.' : 'Back to the grind.';
+  elements.authDescription.textContent = isSignUp
+    ? 'Create an account and choose carefully. Each username can belong to only one player worldwide and cannot be changed.'
+    : 'Sign in with the email and password connected to your permanent athlete profile.';
+  elements.authSubmit.textContent = isSignUp ? 'CREATE ACCOUNT & LOCK USERNAME' : 'SIGN IN TO CLICK EMPIRE';
+  elements.authNote.textContent = isSignUp
+    ? 'Secure online account · one permanent username per player account'
+    : 'Your username, cloud save, and leaderboard score will be restored';
+  setAuthMessage('');
+}
+
+function showUsernameSetup(preferredMode = 'signup') {
+  elements.usernameModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  setAuthMode(preferredMode);
+  if (!elements.usernameInput.value) elements.usernameInput.value = getLegacyUsername();
+  window.setTimeout(() => (authMode === 'signup' ? elements.usernameInput : elements.emailInput).focus(), 0);
+}
+
+function hideUsernameSetup() {
+  elements.usernameModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function getFriendlyAuthError(error, wasSignUp) {
+  const message = String(error?.message || '').toLowerCase();
+  if (wasSignUp && (message.includes('username_taken') || message.includes('database error'))) {
+    return 'That username is already owned by another player. Try a different one.';
+  }
+  if (message.includes('invalid login credentials')) return 'Email or password is incorrect.';
+  if (message.includes('email not confirmed')) return 'Confirm your email first, then return here and sign in.';
+  if (message.includes('already registered')) return 'That email already has an account. Use Sign In instead.';
+  if (message.includes('rate limit')) return 'Too many attempts. Rest for a moment, then try again.';
+  if (message.includes('fetch') || message.includes('network')) return 'Could not reach the online gym. Check your connection and try again.';
+  return error?.message || 'Account setup failed. Please try again.';
+}
+
+async function finishAccountSignIn(welcomeMessage = 'Welcome back') {
+  playerProfile = await fetchPlayerProfile();
+  if (!playerProfile) throw new Error('Your athlete profile could not be loaded.');
+  localStorage.removeItem(LEGACY_PROFILE_KEY);
+  applyPlayerProfile();
+  await loadCloudGame();
+  hideUsernameSetup();
+  await refreshLeaderboard();
+  startBackgroundMusic();
+  showNotification(`${welcomeMessage}, ${playerProfile.username}`, isAdmin() ? 'Administrator controls are available.' : 'Your cloud locker is ready.', 'info');
+}
+
+async function registerPlayer(event) {
   event.preventDefault();
   if (playerProfile) return;
 
+  const wasSignUp = authMode === 'signup';
   const username = elements.usernameInput.value.trim();
-  const validationError = getUsernameError(username);
-  if (validationError) {
-    elements.usernameError.textContent = validationError;
-    elements.usernameInput.setAttribute('aria-invalid', 'true');
+  const email = elements.emailInput.value.trim();
+  const password = elements.passwordInput.value;
+  const validationError = wasSignUp ? getUsernameError(username) : '';
+  if (validationError || !email || password.length < 8) {
+    setAuthMessage(validationError || (!email ? 'Enter your email address.' : 'Password must be at least 8 characters.'));
+    elements.usernameInput.setAttribute('aria-invalid', String(Boolean(validationError)));
     return;
   }
 
-  const createdAt = new Date().toISOString();
-  const profile = {
-    id: globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    username,
-    createdAt,
-  };
-
+  elements.authSubmit.disabled = true;
+  elements.authSubmit.textContent = wasSignUp ? 'CHECKING USERNAME...' : 'SIGNING IN...';
+  setAuthMessage('');
   try {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    playerProfile = profile;
-  } catch (error) {
-    console.warn('Click Empire could not save the player profile.', error);
-    elements.usernameError.textContent = 'This browser could not save your username. Check storage permissions and try again.';
-    return;
-  }
+    if (wasSignUp && await isUsernameTaken(username)) {
+      throw new Error('username_taken');
+    }
 
-  elements.usernameInput.setAttribute('aria-invalid', 'false');
-  elements.usernameModal.hidden = true;
-  document.body.style.overflow = '';
-  applyPlayerProfile();
-  renderLeaderboard();
-  startBackgroundMusic();
-  showNotification(`Welcome, ${username}`, isAdmin() ? 'Administrator controls are now available.' : 'Your permanent athlete profile is ready.', 'info');
+    const payload = wasSignUp
+      ? await supabaseRequest(`/auth/v1/signup?redirect_to=${encodeURIComponent(`${location.origin}${location.pathname}`)}`, {
+        method: 'POST',
+        body: { email, password, data: { username } },
+      })
+      : await supabaseRequest('/auth/v1/token?grant_type=password', {
+        method: 'POST',
+        body: { email, password },
+      });
+
+    const session = normalizeAuthSession(payload);
+    if (!session) {
+      setAuthMode('signin');
+      elements.emailInput.value = email;
+      elements.passwordInput.value = '';
+      setAuthMessage('Account created. Check your email to confirm it, then return here and sign in.', true);
+      return;
+    }
+
+    persistAuthSession(session);
+    await finishAccountSignIn(wasSignUp ? 'Welcome' : 'Welcome back');
+  } catch (error) {
+    console.warn('Click Empire account request failed.', error);
+    setAuthMessage(getFriendlyAuthError(error, wasSignUp));
+  } finally {
+    elements.authSubmit.disabled = false;
+    elements.authSubmit.textContent = authMode === 'signup' ? 'CREATE ACCOUNT & LOCK USERNAME' : 'SIGN IN TO CLICK EMPIRE';
+  }
+}
+
+async function signOutPlayer() {
+  await syncCloudProgress(true);
+  const session = await getActiveAuthSession();
+  if (session) {
+    supabaseRequest('/auth/v1/logout', {
+      method: 'POST',
+      accessToken: session.access_token,
+    }).catch(() => {});
+  }
+  persistAuthSession(null);
+  playerProfile = null;
+  onlineLeaderboardEntries = [];
+  elements.profileInitial.textContent = '?';
+  elements.profileName.textContent = 'Player';
+  elements.settingsProfileInitial.textContent = '?';
+  elements.settingsProfileName.textContent = 'Player';
+  elements.settingsProfileEmail.textContent = '';
+  elements.adminButton.hidden = true;
+  elements.leaderboardButton.classList.remove('admin-profile');
+  state = createDefaultState();
+  displayedCoins = 0;
+  comboCount = 0;
+  comboMultiplier = 1;
+  renderGame();
+  updateComboDisplay();
+  closeSettings();
+  showUsernameSetup('signin');
 }
 
 function getEmpireScore() {
@@ -680,11 +883,20 @@ function getEmpireScore() {
 
 function getLeaderboardEntries() {
   const playerName = playerProfile?.username.toLowerCase();
-  const entries = leaderboardRivals
-    .filter((rival) => rival.username.toLowerCase() !== playerName)
-    .map((rival) => ({ ...rival, isPlayer: false, world: 'League Rival' }));
-
-  if (playerProfile) {
+  const entries = onlineLeaderboardEntries.map((entry) => ({
+    username: entry.username,
+    role: entry.role,
+    rebirths: Number(entry.rebirths) || 0,
+    score: Number(entry.score) || 0,
+    isPlayer: entry.username.toLowerCase() === playerName,
+    world: worldDefinitions[entry.selected_world]?.name || 'Iron House',
+  }));
+  const playerEntry = entries.find((entry) => entry.isPlayer);
+  if (playerEntry) {
+    playerEntry.rebirths = state.rebirths;
+    playerEntry.score = getEmpireScore();
+    playerEntry.world = worldDefinitions[state.selectedWorld]?.name || 'Iron House';
+  } else if (playerProfile) {
     entries.push({
       username: playerProfile.username,
       role: isAdmin() ? 'ADMIN' : 'ATHLETE',
@@ -700,6 +912,15 @@ function getLeaderboardEntries() {
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function renderLeaderboard() {
   const entries = getLeaderboardEntries();
   const playerEntry = entries.find((entry) => entry.isPlayer);
@@ -709,8 +930,8 @@ function renderLeaderboard() {
     <div class="leaderboard-row${entry.isPlayer ? ' is-player' : ''}${entry.role === 'ADMIN' ? ' is-admin' : ''}">
       <span class="leaderboard-rank">${entry.rank <= 3 ? ['Ⅰ', 'Ⅱ', 'Ⅲ'][entry.rank - 1] : `#${entry.rank}`}</span>
       <span class="leaderboard-athlete">
-        <span class="leaderboard-avatar" aria-hidden="true">${entry.username.charAt(0).toUpperCase()}</span>
-        <span><strong>${entry.username}</strong><small>${entry.role}${entry.isPlayer ? ` · ${entry.world}` : ''}</small></span>
+        <span class="leaderboard-avatar" aria-hidden="true">${escapeHtml(entry.username.charAt(0).toUpperCase())}</span>
+        <span><strong>${escapeHtml(entry.username)}</strong><small>${escapeHtml(entry.role)}${entry.isPlayer ? ` · ${escapeHtml(entry.world)}` : ''}</small></span>
       </span>
       <span class="leaderboard-rebirths">${formatNumber(entry.rebirths)}</span>
       <strong class="leaderboard-score">${formatNumber(entry.score)}</strong>
@@ -718,13 +939,26 @@ function renderLeaderboard() {
   `).join('');
 }
 
-function openLeaderboard() {
+async function refreshLeaderboard() {
+  try {
+    const entries = await supabaseRequest('/rest/v1/profiles?select=username,role,score,rebirths,selected_world&order=score.desc,created_at.asc&limit=50');
+    onlineLeaderboardEntries = Array.isArray(entries) ? entries : [];
+    elements.leaderboardStatus.textContent = 'Live leaderboard · scores sync automatically';
+  } catch (error) {
+    elements.leaderboardStatus.textContent = 'Could not refresh · showing the latest available scores';
+  }
+  renderLeaderboard();
+}
+
+async function openLeaderboard() {
   if (!playerProfile) return;
   modalPreviouslyFocused = document.activeElement;
   renderLeaderboard();
   elements.leaderboardModal.hidden = false;
   document.body.style.overflow = 'hidden';
   elements.closeLeaderboard.focus();
+  elements.leaderboardStatus.textContent = 'Refreshing global scores...';
+  await refreshLeaderboard();
 }
 
 function closeLeaderboard() {
@@ -1342,57 +1576,135 @@ function getSafeNumber(value, fallback = 0) {
   return Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : fallback;
 }
 
+function sanitizeSavedState(saved) {
+  const defaults = createDefaultState();
+  const savedRebirths = Math.floor(getSafeNumber(saved?.rebirths));
+  const savedWorld = worldDefinitions[saved?.selectedWorld]
+    && savedRebirths >= worldDefinitions[saved.selectedWorld].requiredRebirths
+    ? saved.selectedWorld
+    : 'ironHouse';
+  return {
+    coins: getSafeNumber(saved?.coins),
+    upgrades: Object.fromEntries(
+      Object.keys(defaults.upgrades).map((key) => [key, Math.floor(getSafeNumber(saved?.upgrades?.[key]))]),
+    ),
+    stats: {
+      totalClicks: Math.floor(getSafeNumber(saved?.stats?.totalClicks)),
+      totalCoinsEarned: getSafeNumber(saved?.stats?.totalCoinsEarned),
+      goldenCoinsCollected: Math.floor(getSafeNumber(saved?.stats?.goldenCoinsCollected)),
+    },
+    achievements: Object.fromEntries(
+      Object.keys(achievementDefinitions).map((key) => [key, Boolean(saved?.achievements?.[key])]),
+    ),
+    rebirths: savedRebirths,
+    selectedWorld: savedWorld,
+    adminBoostUntil: getSafeNumber(saved?.adminBoostUntil),
+    settings: {
+      soundEnabled: saved?.settings?.soundEnabled !== false,
+      musicEnabled: saved?.settings?.musicEnabled !== false,
+    },
+    savedAt: saved?.savedAt || null,
+  };
+}
+
+function applySavedState(saved) {
+  state = sanitizeSavedState(saved);
+  displayedCoins = state.coins;
+}
+
+function getAccountSaveKey() {
+  return playerProfile?.id ? `${SAVE_KEY}:${playerProfile.id}` : SAVE_KEY;
+}
+
 function loadGame() {
   try {
     const rawSave = localStorage.getItem(SAVE_KEY);
-    if (!rawSave) return;
-
-    const saved = JSON.parse(rawSave);
-    const defaults = createDefaultState();
-    const savedRebirths = Math.floor(getSafeNumber(saved.rebirths));
-    const savedWorld = worldDefinitions[saved.selectedWorld]
-      && savedRebirths >= worldDefinitions[saved.selectedWorld].requiredRebirths
-      ? saved.selectedWorld
-      : 'ironHouse';
-    state = {
-      coins: getSafeNumber(saved.coins),
-      upgrades: Object.fromEntries(
-        Object.keys(defaults.upgrades).map((key) => [key, Math.floor(getSafeNumber(saved.upgrades?.[key]))]),
-      ),
-      stats: {
-        totalClicks: Math.floor(getSafeNumber(saved.stats?.totalClicks)),
-        totalCoinsEarned: getSafeNumber(saved.stats?.totalCoinsEarned),
-        goldenCoinsCollected: Math.floor(getSafeNumber(saved.stats?.goldenCoinsCollected)),
-      },
-      achievements: Object.fromEntries(
-        Object.keys(achievementDefinitions).map((key) => [key, Boolean(saved.achievements?.[key])]),
-      ),
-      rebirths: savedRebirths,
-      selectedWorld: savedWorld,
-      adminBoostUntil: getSafeNumber(saved.adminBoostUntil),
-      settings: {
-        soundEnabled: saved.settings?.soundEnabled !== false,
-        musicEnabled: saved.settings?.musicEnabled !== false,
-      },
-      savedAt: saved.savedAt || null,
-    };
-    displayedCoins = state.coins;
+    if (rawSave) applySavedState(JSON.parse(rawSave));
   } catch (error) {
     console.warn('Click Empire could not read the saved game.', error);
     state = createDefaultState();
   }
 }
 
-function saveGame(showFeedback = false) {
-  try {
-    state.savedAt = new Date().toISOString();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-    updateSaveStatus();
+async function loadCloudGame() {
+  const session = await getActiveAuthSession();
+  if (!session || !playerProfile) return;
 
+  try {
+    const accountSave = localStorage.getItem(getAccountSaveKey());
+    if (accountSave) applySavedState(JSON.parse(accountSave));
+
+    const cloudRows = await supabaseRequest(`/rest/v1/game_saves?user_id=eq.${encodeURIComponent(playerProfile.id)}&select=save_data,updated_at`, {
+      accessToken: session.access_token,
+    });
+    const cloudSave = Array.isArray(cloudRows) ? cloudRows[0] : null;
+    const cloudSavedAt = Date.parse(cloudSave?.save_data?.savedAt || cloudSave?.updated_at || 0);
+    const localSavedAt = Date.parse(state.savedAt || 0);
+    if (cloudSave?.save_data && cloudSavedAt >= localSavedAt) {
+      applySavedState(cloudSave.save_data);
+    }
+
+    localStorage.setItem(getAccountSaveKey(), JSON.stringify(state));
+    localStorage.removeItem(SAVE_KEY);
+    checkAchievements(true);
+    renderGame();
+    renderLeaderboard();
+    updateSoundControls();
+    updateMusicControls();
+
+    if (!cloudSave) await syncCloudProgress(true, false);
+  } catch (error) {
+    console.warn('Click Empire could not load the cloud save.', error);
+    elements.saveText.textContent = 'Cloud load unavailable';
+  }
+}
+
+async function syncCloudProgress(force = false, showFeedback = false) {
+  if (!playerProfile || !authSession) return false;
+  if (cloudSaveInFlight) return cloudSaveInFlight;
+  if (!force && Date.now() - lastCloudSaveTime < CLOUD_SAVE_INTERVAL) return false;
+
+  cloudSaveInFlight = (async () => {
+    const session = await getActiveAuthSession();
+    if (!session) return false;
+    const snapshot = JSON.parse(JSON.stringify(state));
+    await supabaseRequest('/rest/v1/rpc/sync_game_progress', {
+      method: 'POST',
+      accessToken: session.access_token,
+      headers: { Prefer: 'return=minimal' },
+      body: {
+        p_save_data: snapshot,
+        p_score: getEmpireScore(),
+        p_rebirths: state.rebirths,
+        p_selected_world: state.selectedWorld,
+      },
+    });
+    lastCloudSaveTime = Date.now();
+    elements.saveIndicator.classList.remove('saving');
+    elements.saveText.textContent = 'Saved to cloud';
     if (showFeedback) {
       playSaveSound();
-      showNotification('Game Saved', 'Your empire is safe in this browser.', 'info');
+      showNotification('Game Saved', 'Your empire is safe in the cloud.', 'info');
     }
+    return true;
+  })().catch((error) => {
+    console.warn('Click Empire could not sync progress online.', error);
+    elements.saveText.textContent = 'Cloud sync paused';
+    if (showFeedback) showNotification('Cloud Save Paused', 'Your progress is still safe on this device.', 'info');
+    return false;
+  }).finally(() => {
+    cloudSaveInFlight = null;
+  });
+  return cloudSaveInFlight;
+}
+
+function saveGame(showFeedback = false) {
+  if (!playerProfile) return;
+  try {
+    state.savedAt = new Date().toISOString();
+    localStorage.setItem(getAccountSaveKey(), JSON.stringify(state));
+    updateSaveStatus();
+    syncCloudProgress(showFeedback, showFeedback);
   } catch (error) {
     console.warn('Click Empire could not save progress.', error);
     elements.saveText.textContent = 'Save unavailable';
@@ -1408,7 +1720,7 @@ function updateSaveStatus() {
 
   window.setTimeout(() => {
     elements.saveIndicator.classList.remove('saving');
-    elements.saveText.textContent = 'Progress saved';
+    elements.saveText.textContent = playerProfile ? 'Cloud save active' : 'Sign in to save';
   }, 600);
 }
 
@@ -1441,7 +1753,7 @@ function closeWorlds() {
 }
 
 function resetGame() {
-  const confirmed = window.confirm('Reset your Click Empire progress? Coins, upgrades, stats, rebirths, worlds, and achievements will be deleted. Your locked username will stay.');
+  const confirmed = window.confirm('Reset your Click Empire progress everywhere? Coins, upgrades, stats, rebirths, worlds, and achievements will be deleted from this device and your cloud save. Your locked username will stay.');
   if (!confirmed) return;
 
   window.clearTimeout(adminBoostTimer);
@@ -1453,7 +1765,7 @@ function resetGame() {
   clickPatternTimes = [];
   clickGuardBlockedUntil = 0;
   setInputGuardStatus(false);
-  localStorage.removeItem(SAVE_KEY);
+  localStorage.removeItem(getAccountSaveKey());
   state = createDefaultState();
   displayedCoins = 0;
   comboCount = 0;
@@ -1465,9 +1777,33 @@ function resetGame() {
   closeSettings();
   checkAchievements(true);
   renderGame();
+  saveGame(false);
+  syncCloudProgress(true, false);
   startBackgroundMusic();
   showNotification('Empire Reset', 'A fresh fortune awaits.', 'info');
   scheduleGoldenCoin();
+}
+
+async function initializePlayerAccount() {
+  const session = await restoreAuthSession();
+  if (!session) {
+    showUsernameSetup('signup');
+    return;
+  }
+
+  try {
+    playerProfile = await fetchPlayerProfile();
+    if (!playerProfile) throw new Error('Player profile missing.');
+    applyPlayerProfile();
+    await loadCloudGame();
+    await refreshLeaderboard();
+  } catch (error) {
+    console.warn('Click Empire could not restore the online account.', error);
+    persistAuthSession(null);
+    playerProfile = null;
+    showUsernameSetup('signin');
+    setAuthMessage('Your session expired. Sign in again to continue.');
+  }
 }
 
 // ---------- Events and startup ----------
@@ -1485,6 +1821,7 @@ elements.soundToggle.addEventListener('click', toggleSound);
 elements.musicToggle.addEventListener('click', toggleMusic);
 elements.saveButton.addEventListener('click', () => saveGame(true));
 elements.resetButton.addEventListener('click', resetGame);
+elements.signOutButton.addEventListener('click', signOutPlayer);
 elements.rebirthButton.addEventListener('click', performRebirth);
 elements.worldsButton.addEventListener('click', openWorlds);
 elements.closeWorlds.addEventListener('click', closeWorlds);
@@ -1493,9 +1830,14 @@ elements.closeLeaderboard.addEventListener('click', closeLeaderboard);
 elements.adminButton.addEventListener('click', openAdmin);
 elements.closeAdmin.addEventListener('click', closeAdmin);
 elements.usernameForm.addEventListener('submit', registerPlayer);
-elements.usernameInput.addEventListener('input', () => {
-  elements.usernameError.textContent = '';
-  elements.usernameInput.setAttribute('aria-invalid', 'false');
+document.querySelectorAll('[data-auth-mode]').forEach((button) => {
+  button.addEventListener('click', () => setAuthMode(button.dataset.authMode));
+});
+[elements.usernameInput, elements.emailInput, elements.passwordInput].forEach((input) => {
+  input.addEventListener('input', () => {
+    setAuthMessage('');
+    elements.usernameInput.setAttribute('aria-invalid', 'false');
+  });
 });
 
 elements.worldList.addEventListener('click', (event) => {
@@ -1543,7 +1885,6 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('beforeunload', () => saveGame(false));
 window.setInterval(() => saveGame(false), AUTO_SAVE_INTERVAL);
 
-playerProfile = loadPlayerProfile();
 buildUpgradeShop();
 buildAchievements();
 buildWorlds();
@@ -1559,4 +1900,4 @@ updateSaveStatus();
 requestAnimationFrame(updateAnimatedBalance);
 requestAnimationFrame(gameTick);
 scheduleGoldenCoin();
-if (!playerProfile) showUsernameSetup();
+initializePlayerAccount();
