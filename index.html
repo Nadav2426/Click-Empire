@@ -210,10 +210,10 @@
       <button class="modal-close" id="closeSettings" type="button" aria-label="Close settings">×</button>
       <span class="eyebrow">LOCKER ROOM</span>
       <h2 id="settingsTitle">Game Settings</h2>
-      <p>Your progress is saved automatically in this browser.</p>
+      <p>Your progress is saved automatically to your Click Empire account.</p>
       <div class="profile-lock-note">
         <span class="profile-avatar" id="settingsProfileInitial" aria-hidden="true">?</span>
-        <span><small>LOCKED ATHLETE PROFILE</small><strong id="settingsProfileName">Player</strong></span>
+        <span><small>ONLINE ATHLETE PROFILE</small><strong id="settingsProfileName">Player</strong><em id="settingsProfileEmail"></em></span>
       </div>
       <button class="settings-action sound-action" id="soundToggle" type="button" aria-pressed="true">
         <span aria-hidden="true">♪</span>
@@ -233,6 +233,10 @@
         <span aria-hidden="true">↻</span>
         <span><strong>Reset Game</strong><small>Delete progress; your username stays locked</small></span>
       </button>
+      <button class="settings-action signout-action" id="signOutButton" type="button">
+        <span aria-hidden="true">⇥</span>
+        <span><strong>Sign Out</strong><small>Keep your username and cloud progress</small></span>
+      </button>
       <small class="save-meta" id="saveMeta">No manual save yet</small>
     </section>
   </div>
@@ -250,36 +254,56 @@
   <div class="modal-backdrop onboarding-backdrop" id="usernameModal" hidden>
     <section class="username-modal" role="dialog" aria-modal="true" aria-labelledby="usernameTitle">
       <div class="username-emblem" aria-hidden="true">CE</div>
-      <span class="eyebrow">ATHLETE REGISTRATION</span>
+      <span class="eyebrow" id="authEyebrow">ONLINE ATHLETE REGISTRATION</span>
       <h2 id="usernameTitle">Claim your locker.</h2>
-      <p>Choose carefully. Every athlete gets one permanent username on this browser, and it cannot be changed after registration.</p>
+      <p id="authDescription">Create an account and choose carefully. Each username can belong to only one player worldwide and cannot be changed.</p>
+      <div class="auth-mode-tabs" role="tablist" aria-label="Account action">
+        <button type="button" class="is-active" id="signUpTab" data-auth-mode="signup" role="tab" aria-selected="true">NEW ATHLETE</button>
+        <button type="button" id="signInTab" data-auth-mode="signin" role="tab" aria-selected="false">SIGN IN</button>
+      </div>
       <form id="usernameForm" novalidate>
-        <label for="usernameInput">USERNAME</label>
-        <div class="username-input-row">
-          <span aria-hidden="true">@</span>
-          <input id="usernameInput" name="username" type="text" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]+" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="IronAthlete" required>
+        <div class="auth-field" id="usernameField">
+          <label for="usernameInput">PERMANENT USERNAME</label>
+          <div class="username-input-row">
+            <span aria-hidden="true">@</span>
+            <input id="usernameInput" name="username" type="text" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]+" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="IronAthlete">
+          </div>
+          <small class="username-rules">3–16 characters · letters, numbers, and underscores · case-insensitive unique</small>
         </div>
-        <small class="username-rules">3–16 characters · letters, numbers, and underscores only</small>
+        <div class="auth-field">
+          <label for="emailInput">EMAIL</label>
+          <div class="username-input-row auth-text-input">
+            <span aria-hidden="true">✉</span>
+            <input id="emailInput" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="passwordInput">PASSWORD</label>
+          <div class="username-input-row auth-text-input">
+            <span aria-hidden="true">◆</span>
+            <input id="passwordInput" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required>
+          </div>
+        </div>
         <p class="username-error" id="usernameError" role="alert"></p>
-        <button class="username-submit" type="submit">LOCK IN USERNAME</button>
+        <button class="username-submit" id="authSubmit" type="submit">CREATE ACCOUNT &amp; LOCK USERNAME</button>
       </form>
-      <small class="local-profile-note">This profile and leaderboard are stored on this device.</small>
+      <small class="local-profile-note" id="authNote">Secure online account · one permanent username per player account</small>
     </section>
   </div>
 
   <div class="modal-backdrop" id="leaderboardModal" hidden>
     <section class="leaderboard-modal" role="dialog" aria-modal="true" aria-labelledby="leaderboardTitle">
       <button class="modal-close" id="closeLeaderboard" type="button" aria-label="Close leaderboard">×</button>
-      <span class="eyebrow">IRON HOUSE OFFLINE LEAGUE</span>
-      <h2 id="leaderboardTitle">Leaderboard</h2>
-      <p>Your live empire score is ranked against the gym’s resident athletes on this device.</p>
+      <span class="eyebrow">CLICK EMPIRE GLOBAL LEAGUE</span>
+      <h2 id="leaderboardTitle">Global Leaderboard</h2>
+      <p>Your empire score is ranked against real athletes across every device.</p>
       <div class="leaderboard-summary">
         <span><small>YOUR RANK</small><strong id="playerRank">#—</strong></span>
         <span><small>EMPIRE SCORE</small><strong id="playerScore">0</strong></span>
       </div>
       <div class="leaderboard-head" aria-hidden="true"><span>RANK / ATHLETE</span><span>REBIRTHS</span><span>SCORE</span></div>
       <div class="leaderboard-list" id="leaderboardList"></div>
-      <small class="local-profile-note">Offline leaderboard · no scores are uploaded</small>
+      <small class="local-profile-note" id="leaderboardStatus">Live leaderboard · scores sync automatically</small>
     </section>
   </div>
 

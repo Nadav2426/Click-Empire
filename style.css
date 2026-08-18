@@ -1243,6 +1243,11 @@ footer {
   background: rgba(255, 102, 137, 0.09);
 }
 
+.signout-action > span:first-child {
+  color: #d7aa4b;
+  background: rgba(215, 170, 75, 0.09);
+}
+
 .settings-action:hover,
 .settings-action:focus-visible {
   border-color: rgba(150, 126, 255, 0.36);
@@ -1253,6 +1258,11 @@ footer {
 .danger-action:hover,
 .danger-action:focus-visible {
   border-color: rgba(255, 102, 137, 0.33);
+}
+
+.signout-action:hover,
+.signout-action:focus-visible {
+  border-color: rgba(215, 170, 75, 0.36);
 }
 
 .save-meta {
@@ -1590,6 +1600,18 @@ footer {
   white-space: nowrap;
 }
 
+.profile-lock-note em {
+  display: block;
+  max-width: 260px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #77746a;
+  font-size: 7px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .onboarding-backdrop {
   z-index: 180;
   background:
@@ -1654,6 +1676,49 @@ footer {
 
 .username-modal form {
   text-align: left;
+}
+
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin: 0 0 18px;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid rgba(230, 221, 193, 0.13);
+  background: #1b1b18;
+}
+
+.auth-mode-tabs button {
+  min-height: 34px;
+  color: #77746a;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  transition: 160ms ease;
+}
+
+.auth-mode-tabs button:hover,
+.auth-mode-tabs button:focus-visible {
+  color: #d9d0ba;
+  background: rgba(255,255,255,0.04);
+}
+
+.auth-mode-tabs button.is-active {
+  color: #211810;
+  background: #c9984f;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.34);
+}
+
+.auth-field {
+  margin-top: 12px;
+}
+
+.auth-field[hidden] {
+  display: none;
 }
 
 .username-modal label {
@@ -1739,6 +1804,20 @@ footer {
   filter: brightness(1.1);
   box-shadow: 1px 1px 0 #11110f;
   transform: translate(3px, 3px);
+}
+
+.username-submit:disabled {
+  color: #77746a;
+  border-color: #555249;
+  background: #38372f;
+  box-shadow: none;
+  cursor: wait;
+  filter: none;
+  transform: none;
+}
+
+.username-error.is-success {
+  color: #9caf77 !important;
 }
 
 .username-modal > .local-profile-note,
@@ -2759,7 +2838,8 @@ footer {
 }
 
 .primary-action > span:first-child,
-.danger-action > span:first-child {
+.danger-action > span:first-child,
+.signout-action > span:first-child {
   border-radius: 3px;
 }
 
