@@ -316,6 +316,30 @@
         <small class="announcement-limit">Up to 180 characters · delivered live</small>
       </section>
 
+      <section class="admin-section target-section" aria-labelledby="adminTargetTitle">
+        <div class="admin-section-heading">
+          <span aria-hidden="true">◎</span>
+          <div><small>REWARD TARGET</small><strong id="adminTargetTitle">Who Gets The Action?</strong></div>
+        </div>
+        <div class="admin-target-toggle" role="group" aria-label="Admin action target">
+          <button class="is-active" type="button" data-admin-scope="self" aria-pressed="true">ONLY ME</button>
+          <button type="button" data-admin-scope="everyone" aria-pressed="false">EVERYONE ONLINE</button>
+        </div>
+        <small class="announcement-limit">Applies to the reward and abuse buttons below. Announcements always go to everyone.</small>
+      </section>
+
+      <section class="admin-section grant-admin-section" aria-labelledby="grantAdminTitle">
+        <div class="admin-section-heading">
+          <span aria-hidden="true">+</span>
+          <div><small>ADMIN TEAM</small><strong id="grantAdminTitle">Grant Admin Access</strong></div>
+        </div>
+        <div class="grant-admin-composer">
+          <input id="grantAdminUsernameInput" type="text" maxlength="16" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Exact player username">
+          <button id="grantAdminButton" type="button">GRANT ADMIN</button>
+        </div>
+        <small class="announcement-limit">The player must already have an account. Admin access is permanent and can be passed on.</small>
+      </section>
+
       <section class="admin-section" aria-labelledby="adminToolsTitle">
         <div class="admin-section-heading">
           <span aria-hidden="true">◆</span>

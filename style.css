@@ -2203,6 +2203,112 @@ footer {
   font-size: 7px;
 }
 
+.target-section {
+  border-left-color: #7e927f;
+}
+
+.target-section .admin-section-heading > span {
+  color: #171713;
+  background: #93a294;
+}
+
+.admin-target-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid rgba(230, 221, 193, 0.13);
+  background: #181815;
+}
+
+.admin-target-toggle button {
+  min-height: 38px;
+  color: #858177;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  transition: 150ms ease;
+}
+
+.admin-target-toggle button:hover,
+.admin-target-toggle button:focus-visible {
+  color: #e9e2d1;
+  border-color: rgba(230, 221, 193, 0.16);
+}
+
+.admin-target-toggle button.is-active {
+  color: #201a12;
+  border-color: #e0b35c;
+  background: #c99646;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.38);
+}
+
+.admin-target-toggle button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.grant-admin-section {
+  border-left-color: #a45a43;
+}
+
+.grant-admin-section .admin-section-heading > span {
+  color: #f1e7d4;
+  background: #9b4937;
+}
+
+.grant-admin-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 8px;
+}
+
+.grant-admin-composer input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 11px;
+  color: #eee7d6;
+  border: 2px solid rgba(230, 221, 193, 0.16);
+  border-radius: 3px;
+  outline: 0;
+  background: #181815;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 12px;
+}
+
+.grant-admin-composer input:focus {
+  border-color: #b55a42;
+}
+
+.grant-admin-composer button {
+  color: #f1e7d4;
+  border: 2px solid #b65a42;
+  border-radius: 3px;
+  background: #883c2f;
+  box-shadow: 3px 3px 0 #11110f;
+  cursor: pointer;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.grant-admin-composer button:hover,
+.grant-admin-composer button:focus-visible {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+.grant-admin-composer button:disabled {
+  cursor: wait;
+  filter: grayscale(0.6);
+  opacity: 0.55;
+}
+
 @media (max-width: 760px) {
   .online-player-pill {
     width: 42px;
@@ -2274,7 +2380,12 @@ footer {
     grid-template-columns: 1fr;
   }
 
-  .announcement-composer button {
+  .grant-admin-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .announcement-composer button,
+  .grant-admin-composer button {
     min-height: 40px;
   }
 }

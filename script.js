@@ -222,6 +222,7 @@ let adminEventPollInFlight = false;
 let presenceTimer = null;
 let adminEventTimer = null;
 let adminRequestInFlight = false;
+let adminActionScope = 'self';
 let lastCloudSaveTime = 0;
 let cloudSaveInFlight = null;
 let audioContext = null;
@@ -310,6 +311,8 @@ const elements = {
   adminStatus: document.getElementById('adminStatus'),
   adminAnnouncementInput: document.getElementById('adminAnnouncementInput'),
   sendAnnouncementButton: document.getElementById('sendAnnouncementButton'),
+  grantAdminUsernameInput: document.getElementById('grantAdminUsernameInput'),
+  grantAdminButton: document.getElementById('grantAdminButton'),
 };
 
 // ---------- Formatting and calculations ----------
@@ -861,6 +864,7 @@ function getLeaderboardEntries() {
   }));
   const playerEntry = entries.find((entry) => entry.isPlayer);
   if (playerEntry) {
+    playerEntry.role = playerProfile.role;
     playerEntry.rebirths = state.rebirths;
     playerEntry.score = getEmpireScore();
     playerEntry.world = worldDefinitions[state.selectedWorld]?.name || 'Iron House';
@@ -975,10 +979,24 @@ function applyOnlineAdminEvent(event) {
   const eventAge = Date.now() - Date.parse(event.created_at || 0);
   if (!Number.isFinite(eventAge) || eventAge > 90000) return false;
 
+  const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+  const eventScope = payload.scope === 'self' ? 'self' : 'everyone';
+  if (eventScope === 'self' && payload.target_user_id !== playerProfile?.id) return false;
+
+  if (event.event_type === 'adminGranted') {
+    playerProfile.role = 'ADMIN';
+    applyPlayerProfile();
+    renderLeaderboard();
+    playAchievementSound();
+    showNotification('Admin Access Granted', `${payload.granted_by || 'An admin'} promoted you. The Admin panel is now available.`, 'info');
+    return false;
+  }
+
   let message = '';
+  const onlyMe = eventScope === 'self';
   switch (event.event_type) {
     case 'announcement': {
-      const announcement = String(event.payload?.message || '').trim();
+      const announcement = String(payload.message || '').trim();
       if (announcement) {
         playAchievementSound();
         showNotification('TheBradar Announcement', announcement, 'info');
@@ -987,13 +1005,13 @@ function applyOnlineAdminEvent(event) {
     }
     case 'addMillion':
       addCoins(1000000);
-      message = 'TheBradar gave every online player 1M coins.';
+      message = onlyMe ? 'Added 1M coins to your account.' : 'Every online player received 1M coins.';
       break;
     case 'addRebirth': {
       state.rebirths += 1;
       const unlockedWorld = Object.entries(worldDefinitions).find(([, world]) => world.requiredRebirths === state.rebirths);
       if (unlockedWorld) state.selectedWorld = unlockedWorld[0];
-      message = 'TheBradar added one rebirth to every online player.';
+      message = onlyMe ? 'Added one rebirth to your account.' : 'Every online player received one rebirth.';
       break;
     }
     case 'spawnGolden':
@@ -1001,22 +1019,22 @@ function applyOnlineAdminEvent(event) {
       activeGoldenCoin?.remove();
       activeGoldenCoin = null;
       spawnGoldenCoin();
-      message = 'TheBradar spawned a Golden Coin for everyone online.';
+      message = onlyMe ? 'Spawned a Golden Coin for you.' : 'Spawned a Golden Coin for everyone online.';
       break;
     case 'unlockWorlds':
       state.rebirths = Math.max(state.rebirths, 25);
       state.selectedWorld = 'olympusArena';
-      message = 'TheBradar unlocked every world for online players.';
+      message = onlyMe ? 'Unlocked every world for you.' : 'Unlocked every world for all online players.';
       break;
     case 'coinRain':
       addCoins(1000000000000);
-      message = 'Admin abuse: a 1T coin rain hit every online player.';
+      message = onlyMe ? 'Admin abuse: added a 1T coin rain to your account.' : 'Admin abuse: a 1T coin rain hit every online player.';
       break;
     case 'maxUpgrades':
       Object.keys(state.upgrades).forEach((key) => {
         state.upgrades[key] = Math.max(state.upgrades[key], 25);
       });
-      message = 'Admin abuse: every online upgrade reached level 25.';
+      message = onlyMe ? 'Admin abuse: your upgrades reached level 25.' : 'Admin abuse: every online upgrade reached level 25.';
       break;
     case 'overdrive': {
       const sharedEndTime = Date.parse(event.created_at || 0) + 60000;
@@ -1026,21 +1044,21 @@ function applyOnlineAdminEvent(event) {
         renderGame();
         renderAdminStatus('Overdrive ended. Production returned to normal.');
       }, Math.max(0, sharedEndTime - Date.now()) + 50);
-      message = 'Admin abuse: x100 production is live for 60 seconds.';
+      message = onlyMe ? 'Admin abuse: your x100 production is live for 60 seconds.' : 'Admin abuse: x100 production is live for everyone online.';
       break;
     }
     case 'allAchievements':
       Object.keys(achievementDefinitions).forEach((key) => {
         state.achievements[key] = true;
       });
-      message = 'Admin abuse: every online PR board is complete.';
+      message = onlyMe ? 'Admin abuse: your PR board is complete.' : 'Admin abuse: every online PR board is complete.';
       break;
     default:
       return false;
   }
 
   playWorldSound();
-  showNotification('Live Admin Event', message, 'info');
+  showNotification(onlyMe ? 'Admin Action' : 'Live Admin Event', message, 'info');
   if (isAdmin() && !elements.adminModal.hidden) renderAdminStatus(message);
   return true;
 }
@@ -1448,7 +1466,18 @@ function renderAdminStatus(message = '') {
   const remainingSeconds = Math.max(0, Math.ceil((state.adminBoostUntil - Date.now()) / 1000));
   elements.adminStatus.textContent = remainingSeconds > 0
     ? `Overdrive active · x100 production for ${remainingSeconds}s`
-    : 'Live admin systems ready.';
+    : `Target: ${adminActionScope === 'self' ? 'only me' : 'everyone online'} · live admin systems ready.`;
+}
+
+function setAdminActionScope(scope) {
+  if (!isAdmin() || !['self', 'everyone'].includes(scope) || adminRequestInFlight) return;
+  adminActionScope = scope;
+  document.querySelectorAll('[data-admin-scope]').forEach((button) => {
+    const selected = button.dataset.adminScope === scope;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  renderAdminStatus();
 }
 
 function openAdmin() {
@@ -1499,20 +1528,60 @@ async function runAdminAction(action) {
   if (!allowedActions.has(action)) return;
 
   adminRequestInFlight = true;
-  document.querySelectorAll('[data-admin-action]').forEach((button) => {
+  document.querySelectorAll('[data-admin-action], [data-admin-scope]').forEach((button) => {
     button.disabled = true;
   });
-  renderAdminStatus('Broadcasting live admin event...');
+  renderAdminStatus(adminActionScope === 'self' ? 'Applying admin action to your account...' : 'Broadcasting admin action to everyone online...');
   try {
-    await broadcastAdminEvent(action);
+    await broadcastAdminEvent(action, { scope: adminActionScope });
   } catch (error) {
     console.warn('Click Empire could not broadcast the admin event.', error);
     renderAdminStatus('Broadcast failed. Check the connection and try again.');
   } finally {
     adminRequestInFlight = false;
-    document.querySelectorAll('[data-admin-action]').forEach((button) => {
+    document.querySelectorAll('[data-admin-action], [data-admin-scope]').forEach((button) => {
       button.disabled = false;
     });
+  }
+}
+
+async function grantAdminAccess() {
+  if (!isAdmin() || adminRequestInFlight) return;
+  const username = elements.grantAdminUsernameInput.value.trim();
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(username)) {
+    renderAdminStatus('Enter a valid player username with 3–16 characters.');
+    elements.grantAdminUsernameInput.focus();
+    return;
+  }
+
+  adminRequestInFlight = true;
+  elements.grantAdminButton.disabled = true;
+  renderAdminStatus(`Granting admin access to ${username}...`);
+  try {
+    const session = await getActiveAuthSession();
+    if (!session) throw new Error('Your admin session expired.');
+    const promotedProfile = await supabaseRequest('/rest/v1/rpc/grant_admin_role', {
+      method: 'POST',
+      accessToken: session.access_token,
+      body: { p_username: username },
+    });
+    elements.grantAdminUsernameInput.value = '';
+    await refreshLeaderboard();
+    renderAdminStatus(`${promotedProfile.username} is now an admin.`);
+    showNotification('Admin Granted', `${promotedProfile.username} can now use and share the Admin panel.`, 'info');
+  } catch (error) {
+    const errorMessage = String(error?.message || '').toLowerCase();
+    if (errorMessage.includes('player_not_found')) {
+      renderAdminStatus('Player not found. Check the exact username.');
+    } else if (errorMessage.includes('already_admin')) {
+      renderAdminStatus('That player is already an admin.');
+    } else {
+      console.warn('Click Empire could not grant admin access.', error);
+      renderAdminStatus('Admin grant failed. Check the connection and try again.');
+    }
+  } finally {
+    adminRequestInFlight = false;
+    elements.grantAdminButton.disabled = false;
   }
 }
 
@@ -1958,6 +2027,10 @@ elements.adminButton.addEventListener('click', openAdmin);
 elements.closeAdmin.addEventListener('click', closeAdmin);
 elements.usernameForm.addEventListener('submit', registerPlayer);
 elements.sendAnnouncementButton.addEventListener('click', broadcastAnnouncement);
+elements.grantAdminButton.addEventListener('click', grantAdminAccess);
+elements.grantAdminUsernameInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') grantAdminAccess();
+});
 [elements.usernameInput, elements.adminCodeInput].forEach((input) => {
   input.addEventListener('input', () => {
     setAuthMessage('');
@@ -1972,6 +2045,8 @@ elements.worldList.addEventListener('click', (event) => {
 });
 
 elements.adminModal.addEventListener('click', (event) => {
+  const scopeButton = event.target.closest('[data-admin-scope]');
+  if (scopeButton) setAdminActionScope(scopeButton.dataset.adminScope);
   const actionButton = event.target.closest('[data-admin-action]');
   if (actionButton) runAdminAction(actionButton.dataset.adminAction);
 });
