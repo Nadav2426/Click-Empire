@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#171713">
+  <meta name="theme-color" content="#10110f">
   <meta name="description" content="Put in the reps and build your Click Empire.">
   <title>Click Empire</title>
-  <link rel="stylesheet" href="style.css?v=20260818-4">
+  <link rel="stylesheet" href="style.css?v=20260818-5">
 </head>
 <body>
   <div class="ambient ambient-one" aria-hidden="true"></div>
@@ -18,7 +18,7 @@
         <span class="brand-mark" aria-hidden="true">C</span>
         <span>
           <strong>CLICK EMPIRE</strong>
-          <small>TRAIN. LIFT. EARN.</small>
+          <small>IRON HOUSE · EST. 2026</small>
         </span>
       </a>
 
@@ -54,7 +54,7 @@
         <div class="resource-main">
           <span class="mini-coin" aria-hidden="true">C</span>
           <div>
-            <span class="resource-label">TRAINING WALLET</span>
+            <span class="resource-label">CURRENT LOAD</span>
             <strong class="coin-balance" id="coinBalance">0</strong>
             <span class="resource-unit">coins</span>
           </div>
@@ -70,8 +70,8 @@
           <section class="panel stats-panel" aria-labelledby="statsTitle">
             <div class="panel-heading">
               <div>
-                <span class="eyebrow">TRAINING LOG</span>
-                <h2 id="statsTitle">Performance</h2>
+                <span class="eyebrow">TRAINING NOTES</span>
+                <h2 id="statsTitle">Numbers that matter</h2>
               </div>
               <span class="status-chip"><i></i> MANUAL MODE</span>
             </div>
@@ -108,8 +108,8 @@
           <section class="panel achievements-panel" aria-labelledby="achievementsTitle">
             <div class="panel-heading compact">
               <div>
-                <span class="eyebrow">PERSONAL RECORDS</span>
-                <h2 id="achievementsTitle">PR Board</h2>
+                <span class="eyebrow">BEST LIFTS</span>
+                <h2 id="achievementsTitle">Personal records</h2>
               </div>
               <strong class="achievement-count"><span id="achievementCount">0</span>/<span id="achievementTotal">15</span></strong>
             </div>
@@ -119,9 +119,9 @@
 
         <section class="click-zone" aria-labelledby="clickZoneTitle">
           <div class="click-heading">
-            <span class="eyebrow">EVERY EMPIRE STARTS WITH ONE REP</span>
-            <h1 id="clickZoneTitle">Put in the reps.</h1>
-            <p>Press the plate. Build your fortune.</p>
+            <span class="eyebrow">TODAY'S SET</span>
+            <h1 id="clickZoneTitle">One more rep.</h1>
+            <p>Press the plate. Keep the streak alive.</p>
           </div>
 
           <div class="coin-stage" id="coinStage">
@@ -155,7 +155,7 @@
 
           <section class="milestone-card" aria-label="Next empire milestone">
             <div>
-              <span class="eyebrow">NEXT RANK</span>
+              <span class="eyebrow">NEXT PLATE</span>
               <strong id="milestoneTitle">Warm-Up</strong>
             </div>
             <span id="milestoneProgress">0 / 100</span>
@@ -165,7 +165,7 @@
           <section class="rebirth-card" aria-labelledby="rebirthTitle">
             <div class="rebirth-mark" aria-hidden="true">↻</div>
             <div class="rebirth-copy">
-              <span class="eyebrow">REBIRTH PROGRAM</span>
+              <span class="eyebrow">START OVER STRONGER</span>
               <strong id="rebirthTitle">Reset. Return stronger.</strong>
               <p>Trade this run for permanent power and unlock new worlds.</p>
             </div>
@@ -186,15 +186,15 @@
           <section class="shop-panel" aria-labelledby="shopTitle">
             <div class="shop-header">
               <div>
-                <span class="eyebrow">STRENGTH PROGRAM</span>
-                <h2 id="shopTitle">Training Floor</h2>
+                <span class="eyebrow">EQUIPMENT ROOM</span>
+                <h2 id="shopTitle">Build your floor</h2>
               </div>
               <span class="shop-icon" aria-hidden="true">⌂</span>
             </div>
 
             <div class="upgrade-list" id="upgradeList"></div>
 
-            <p class="shop-tip"><span aria-hidden="true">▲</span> Every new level takes more work. Train wisely.</p>
+            <p class="shop-tip"><span aria-hidden="true">▲</span> Buy what changes your run.</p>
           </section>
         </aside>
       </div>
@@ -203,7 +203,7 @@
     <footer>
       <span>CLICK EMPIRE</span>
       <span>•</span>
-      <span>EST. 2026 · NO SHORTCUTS · AUTOSAVE ON</span>
+      <span>BUILT ONE REP AT A TIME · AUTOSAVE ON</span>
     </footer>
   </div>
 
@@ -255,12 +255,12 @@
   <div class="modal-backdrop onboarding-backdrop" id="usernameModal" hidden>
     <section class="username-modal" role="dialog" aria-modal="true" aria-labelledby="usernameTitle">
       <div class="username-emblem" aria-hidden="true">CE</div>
-      <span class="eyebrow">ONLINE ATHLETE REGISTRATION</span>
-      <h2 id="usernameTitle">Claim your locker.</h2>
-      <p>Choose carefully. Each username can belong to only one player worldwide and cannot be changed.</p>
+      <span class="eyebrow">FIRST DAY AT THE IRON HOUSE</span>
+      <h2 id="usernameTitle">Put your name on a locker.</h2>
+      <p>This is your permanent player name. It stays unique across every device and cannot be changed later.</p>
       <form id="usernameForm" novalidate>
         <div class="auth-field">
-          <label for="usernameInput">PERMANENT USERNAME</label>
+          <label for="usernameInput">LOCKER NAME</label>
           <div class="username-input-row">
             <span aria-hidden="true">@</span>
             <input id="usernameInput" name="username" type="text" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]+" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="IronAthlete">
@@ -275,7 +275,7 @@
           </div>
         </div>
         <p class="username-error" id="usernameError" role="alert"></p>
-        <button class="username-submit" id="authSubmit" type="submit">CLAIM USERNAME &amp; START</button>
+        <button class="username-submit" id="authSubmit" type="submit">START TRAINING</button>
       </form>
       <small class="local-profile-note">No email or password. This browser keeps your account; clearing its site data will remove access from this device.</small>
     </section>
@@ -369,6 +369,6 @@
     </section>
   </div>
 
-  <script src="script.js?v=20260818-4"></script>
+  <script src="script.js?v=20260818-5"></script>
 </body>
 </html>
