@@ -9,6 +9,8 @@ const SUPABASE_URL = 'https://dknoykvdvbiyopkfmtig.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_BbQ01AFUj1QGi9mRU6N4sg_W56Y7J5W';
 const AUTO_SAVE_INTERVAL = 5000;
 const CLOUD_SAVE_INTERVAL = 15000;
+const PRESENCE_HEARTBEAT_INTERVAL = 25000;
+const ADMIN_EVENT_POLL_INTERVAL = 5000;
 const COMBO_WINDOW = 850;
 const COMBO_RESET_TIME = 1450;
 const CLICK_GUARD = {
@@ -213,8 +215,13 @@ let activeGoldenCoin = null;
 let modalPreviouslyFocused = null;
 let playerProfile = null;
 let authSession = null;
-let authMode = 'signup';
 let onlineLeaderboardEntries = [];
+let lastAdminEventId = 0;
+let adminEventCursorReady = false;
+let adminEventPollInFlight = false;
+let presenceTimer = null;
+let adminEventTimer = null;
+let adminRequestInFlight = false;
 let lastCloudSaveTime = 0;
 let cloudSaveInFlight = null;
 let audioContext = null;
@@ -276,27 +283,21 @@ const elements = {
   saveIndicator: document.getElementById('saveIndicator'),
   saveText: document.getElementById('saveText'),
   saveMeta: document.getElementById('saveMeta'),
-  signOutButton: document.getElementById('signOutButton'),
+  onlinePlayerCount: document.getElementById('onlinePlayerCount'),
   usernameModal: document.getElementById('usernameModal'),
   usernameForm: document.getElementById('usernameForm'),
   usernameInput: document.getElementById('usernameInput'),
-  usernameField: document.getElementById('usernameField'),
-  emailInput: document.getElementById('emailInput'),
-  passwordInput: document.getElementById('passwordInput'),
+  adminCodeField: document.getElementById('adminCodeField'),
+  adminCodeInput: document.getElementById('adminCodeInput'),
   usernameError: document.getElementById('usernameError'),
   authSubmit: document.getElementById('authSubmit'),
-  authEyebrow: document.getElementById('authEyebrow'),
   usernameTitle: document.getElementById('usernameTitle'),
-  authDescription: document.getElementById('authDescription'),
-  authNote: document.getElementById('authNote'),
-  signUpTab: document.getElementById('signUpTab'),
-  signInTab: document.getElementById('signInTab'),
   leaderboardButton: document.getElementById('leaderboardButton'),
   profileInitial: document.getElementById('profileInitial'),
   profileName: document.getElementById('profileName'),
   settingsProfileInitial: document.getElementById('settingsProfileInitial'),
   settingsProfileName: document.getElementById('settingsProfileName'),
-  settingsProfileEmail: document.getElementById('settingsProfileEmail'),
+  settingsProfileDevice: document.getElementById('settingsProfileDevice'),
   leaderboardModal: document.getElementById('leaderboardModal'),
   closeLeaderboard: document.getElementById('closeLeaderboard'),
   leaderboardList: document.getElementById('leaderboardList'),
@@ -307,6 +308,8 @@ const elements = {
   adminModal: document.getElementById('adminModal'),
   closeAdmin: document.getElementById('closeAdmin'),
   adminStatus: document.getElementById('adminStatus'),
+  adminAnnouncementInput: document.getElementById('adminAnnouncementInput'),
+  sendAnnouncementButton: document.getElementById('sendAnnouncementButton'),
 };
 
 // ---------- Formatting and calculations ----------
@@ -360,7 +363,7 @@ function isAdmin() {
 }
 
 function getAdminMultiplier() {
-  return isAdmin() && Date.now() < state.adminBoostUntil ? 100 : 1;
+  return Date.now() < state.adminBoostUntil ? 100 : 1;
 }
 
 function getRebirthCost() {
@@ -706,7 +709,7 @@ async function fetchPlayerProfile() {
     accessToken: session.access_token,
   });
   const profile = Array.isArray(profiles) ? profiles[0] : null;
-  return profile ? { ...profile, email: session.user.email || '' } : null;
+  return profile || null;
 }
 
 async function isUsernameTaken(username) {
@@ -721,7 +724,7 @@ function applyPlayerProfile() {
   elements.profileName.textContent = playerProfile.username;
   elements.settingsProfileInitial.textContent = initial;
   elements.settingsProfileName.textContent = playerProfile.username;
-  elements.settingsProfileEmail.textContent = playerProfile.email || 'Cloud account connected';
+  elements.settingsProfileDevice.textContent = 'Device account · cloud connected';
   elements.adminButton.hidden = !isAdmin();
   elements.leaderboardButton.classList.toggle('admin-profile', isAdmin());
 }
@@ -731,34 +734,20 @@ function setAuthMessage(message = '', success = false) {
   elements.usernameError.classList.toggle('is-success', success);
 }
 
-function setAuthMode(mode) {
-  authMode = mode === 'signin' ? 'signin' : 'signup';
-  const isSignUp = authMode === 'signup';
-  elements.usernameField.hidden = !isSignUp;
-  elements.usernameInput.required = isSignUp;
-  elements.passwordInput.autocomplete = isSignUp ? 'new-password' : 'current-password';
-  elements.signUpTab.classList.toggle('is-active', isSignUp);
-  elements.signInTab.classList.toggle('is-active', !isSignUp);
-  elements.signUpTab.setAttribute('aria-selected', String(isSignUp));
-  elements.signInTab.setAttribute('aria-selected', String(!isSignUp));
-  elements.authEyebrow.textContent = isSignUp ? 'ONLINE ATHLETE REGISTRATION' : 'RETURNING ATHLETE';
-  elements.usernameTitle.textContent = isSignUp ? 'Claim your locker.' : 'Back to the grind.';
-  elements.authDescription.textContent = isSignUp
-    ? 'Create an account and choose carefully. Each username can belong to only one player worldwide and cannot be changed.'
-    : 'Sign in with the email and password connected to your permanent athlete profile.';
-  elements.authSubmit.textContent = isSignUp ? 'CREATE ACCOUNT & LOCK USERNAME' : 'SIGN IN TO CLICK EMPIRE';
-  elements.authNote.textContent = isSignUp
-    ? 'Secure online account · one permanent username per player account'
-    : 'Your username, cloud save, and leaderboard score will be restored';
-  setAuthMessage('');
+function updateAdminClaimField() {
+  const isAdminName = elements.usernameInput.value.trim().toLowerCase() === 'thebradar';
+  elements.adminCodeField.hidden = !isAdminName;
+  elements.adminCodeInput.required = isAdminName;
+  if (!isAdminName) elements.adminCodeInput.value = '';
 }
 
-function showUsernameSetup(preferredMode = 'signup') {
+function showUsernameSetup() {
   elements.usernameModal.hidden = false;
   document.body.style.overflow = 'hidden';
-  setAuthMode(preferredMode);
+  setAuthMessage('');
   if (!elements.usernameInput.value) elements.usernameInput.value = getLegacyUsername();
-  window.setTimeout(() => (authMode === 'signup' ? elements.usernameInput : elements.emailInput).focus(), 0);
+  updateAdminClaimField();
+  window.setTimeout(() => elements.usernameInput.focus(), 0);
 }
 
 function hideUsernameSetup() {
@@ -766,17 +755,33 @@ function hideUsernameSetup() {
   document.body.style.overflow = '';
 }
 
-function getFriendlyAuthError(error, wasSignUp) {
+function getFriendlyAuthError(error) {
   const message = String(error?.message || '').toLowerCase();
-  if (wasSignUp && (message.includes('username_taken') || message.includes('database error'))) {
+  if (message.includes('username_taken')) {
     return 'That username is already owned by another player. Try a different one.';
   }
-  if (message.includes('invalid login credentials')) return 'Email or password is incorrect.';
-  if (message.includes('email not confirmed')) return 'Confirm your email first, then return here and sign in.';
-  if (message.includes('already registered')) return 'That email already has an account. Use Sign In instead.';
+  if (message.includes('invalid_admin_code')) return 'That one-time admin claim code is not valid.';
+  if (message.includes('anonymous sign-ins are disabled')) return 'Device accounts are temporarily unavailable. Please try again soon.';
   if (message.includes('rate limit')) return 'Too many attempts. Rest for a moment, then try again.';
   if (message.includes('fetch') || message.includes('network')) return 'Could not reach the online gym. Check your connection and try again.';
   return error?.message || 'Account setup failed. Please try again.';
+}
+
+async function ensureAnonymousSession() {
+  const existingSession = await getActiveAuthSession();
+  if (existingSession) return existingSession;
+
+  const payload = await supabaseRequest('/auth/v1/signup', {
+    method: 'POST',
+    body: {
+      data: {},
+      gotrue_meta_security: {},
+    },
+  });
+  const session = normalizeAuthSession(payload);
+  if (!session) throw new Error('The device account could not be created.');
+  persistAuthSession(session);
+  return session;
 }
 
 async function finishAccountSignIn(welcomeMessage = 'Welcome back') {
@@ -787,6 +792,7 @@ async function finishAccountSignIn(welcomeMessage = 'Welcome back') {
   await loadCloudGame();
   hideUsernameSetup();
   await refreshLeaderboard();
+  await startOnlineServices();
   startBackgroundMusic();
   showNotification(`${welcomeMessage}, ${playerProfile.username}`, isAdmin() ? 'Administrator controls are available.' : 'Your cloud locker is ready.', 'info');
 }
@@ -795,82 +801,44 @@ async function registerPlayer(event) {
   event.preventDefault();
   if (playerProfile) return;
 
-  const wasSignUp = authMode === 'signup';
   const username = elements.usernameInput.value.trim();
-  const email = elements.emailInput.value.trim();
-  const password = elements.passwordInput.value;
-  const validationError = wasSignUp ? getUsernameError(username) : '';
-  if (validationError || !email || password.length < 8) {
-    setAuthMessage(validationError || (!email ? 'Enter your email address.' : 'Password must be at least 8 characters.'));
+  const adminCode = elements.adminCodeInput.value;
+  let validationError = getUsernameError(username);
+  if (username.toLowerCase() === 'thebradar' && username !== 'TheBradar') {
+    validationError = 'That name is reserved. Use the exact capitalization: TheBradar.';
+  }
+  if (!validationError && username === 'TheBradar' && !adminCode) {
+    validationError = 'Enter the one-time admin claim code.';
+  }
+  if (validationError) {
+    setAuthMessage(validationError);
     elements.usernameInput.setAttribute('aria-invalid', String(Boolean(validationError)));
     return;
   }
 
   elements.authSubmit.disabled = true;
-  elements.authSubmit.textContent = wasSignUp ? 'CHECKING USERNAME...' : 'SIGNING IN...';
+  elements.authSubmit.textContent = 'CLAIMING USERNAME...';
   setAuthMessage('');
   try {
-    if (wasSignUp && await isUsernameTaken(username)) {
-      throw new Error('username_taken');
-    }
-
-    const payload = wasSignUp
-      ? await supabaseRequest(`/auth/v1/signup?redirect_to=${encodeURIComponent(`${location.origin}${location.pathname}`)}`, {
-        method: 'POST',
-        body: { email, password, data: { username } },
-      })
-      : await supabaseRequest('/auth/v1/token?grant_type=password', {
-        method: 'POST',
-        body: { email, password },
-      });
-
-    const session = normalizeAuthSession(payload);
-    if (!session) {
-      setAuthMode('signin');
-      elements.emailInput.value = email;
-      elements.passwordInput.value = '';
-      setAuthMessage('Account created. Check your email to confirm it, then return here and sign in.', true);
-      return;
-    }
-
-    persistAuthSession(session);
-    await finishAccountSignIn(wasSignUp ? 'Welcome' : 'Welcome back');
-  } catch (error) {
-    console.warn('Click Empire account request failed.', error);
-    setAuthMessage(getFriendlyAuthError(error, wasSignUp));
-  } finally {
-    elements.authSubmit.disabled = false;
-    elements.authSubmit.textContent = authMode === 'signup' ? 'CREATE ACCOUNT & LOCK USERNAME' : 'SIGN IN TO CLICK EMPIRE';
-  }
-}
-
-async function signOutPlayer() {
-  await syncCloudProgress(true);
-  const session = await getActiveAuthSession();
-  if (session) {
-    supabaseRequest('/auth/v1/logout', {
+    if (await isUsernameTaken(username)) throw new Error('username_taken');
+    const session = await ensureAnonymousSession();
+    await supabaseRequest('/rest/v1/rpc/claim_username', {
       method: 'POST',
       accessToken: session.access_token,
-    }).catch(() => {});
+      body: {
+        p_username: username,
+        p_admin_code: username === 'TheBradar' ? adminCode : null,
+      },
+    });
+    elements.adminCodeInput.value = '';
+    await finishAccountSignIn('Welcome');
+  } catch (error) {
+    console.warn('Click Empire account request failed.', error);
+    setAuthMessage(getFriendlyAuthError(error));
+  } finally {
+    elements.authSubmit.disabled = false;
+    elements.authSubmit.textContent = 'CLAIM USERNAME & START';
   }
-  persistAuthSession(null);
-  playerProfile = null;
-  onlineLeaderboardEntries = [];
-  elements.profileInitial.textContent = '?';
-  elements.profileName.textContent = 'Player';
-  elements.settingsProfileInitial.textContent = '?';
-  elements.settingsProfileName.textContent = 'Player';
-  elements.settingsProfileEmail.textContent = '';
-  elements.adminButton.hidden = true;
-  elements.leaderboardButton.classList.remove('admin-profile');
-  state = createDefaultState();
-  displayedCoins = 0;
-  comboCount = 0;
-  comboMultiplier = 1;
-  renderGame();
-  updateComboDisplay();
-  closeSettings();
-  showUsernameSetup('signin');
 }
 
 function getEmpireScore() {
@@ -965,6 +933,154 @@ function closeLeaderboard() {
   elements.leaderboardModal.hidden = true;
   document.body.style.overflow = '';
   modalPreviouslyFocused?.focus();
+}
+
+// ---------- Online presence and live admin events ----------
+
+async function heartbeatOnlinePlayers() {
+  if (!playerProfile || document.hidden) return;
+  try {
+    const session = await getActiveAuthSession();
+    if (!session) return;
+    const onlineCount = await supabaseRequest('/rest/v1/rpc/heartbeat_player', {
+      method: 'POST',
+      accessToken: session.access_token,
+      body: { p_selected_world: state.selectedWorld },
+    });
+    elements.onlinePlayerCount.textContent = formatNumber(Number(onlineCount) || 1);
+  } catch (error) {
+    elements.onlinePlayerCount.textContent = '—';
+    console.warn('Click Empire could not refresh the online player count.', error);
+  }
+}
+
+async function initializeAdminEventCursor() {
+  if (!playerProfile) return false;
+  try {
+    const session = await getActiveAuthSession();
+    if (!session) return false;
+    const events = await supabaseRequest('/rest/v1/admin_events?select=id&order=id.desc&limit=1', {
+      accessToken: session.access_token,
+    });
+    lastAdminEventId = Number(events?.[0]?.id) || 0;
+    adminEventCursorReady = true;
+    return true;
+  } catch (error) {
+    console.warn('Click Empire could not initialize live admin events.', error);
+    return false;
+  }
+}
+
+function applyOnlineAdminEvent(event) {
+  const eventAge = Date.now() - Date.parse(event.created_at || 0);
+  if (!Number.isFinite(eventAge) || eventAge > 90000) return false;
+
+  let message = '';
+  switch (event.event_type) {
+    case 'announcement': {
+      const announcement = String(event.payload?.message || '').trim();
+      if (announcement) {
+        playAchievementSound();
+        showNotification('TheBradar Announcement', announcement, 'info');
+      }
+      return false;
+    }
+    case 'addMillion':
+      addCoins(1000000);
+      message = 'TheBradar gave every online player 1M coins.';
+      break;
+    case 'addRebirth': {
+      state.rebirths += 1;
+      const unlockedWorld = Object.entries(worldDefinitions).find(([, world]) => world.requiredRebirths === state.rebirths);
+      if (unlockedWorld) state.selectedWorld = unlockedWorld[0];
+      message = 'TheBradar added one rebirth to every online player.';
+      break;
+    }
+    case 'spawnGolden':
+      window.clearTimeout(goldenCoinExpiryTimer);
+      activeGoldenCoin?.remove();
+      activeGoldenCoin = null;
+      spawnGoldenCoin();
+      message = 'TheBradar spawned a Golden Coin for everyone online.';
+      break;
+    case 'unlockWorlds':
+      state.rebirths = Math.max(state.rebirths, 25);
+      state.selectedWorld = 'olympusArena';
+      message = 'TheBradar unlocked every world for online players.';
+      break;
+    case 'coinRain':
+      addCoins(1000000000000);
+      message = 'Admin abuse: a 1T coin rain hit every online player.';
+      break;
+    case 'maxUpgrades':
+      Object.keys(state.upgrades).forEach((key) => {
+        state.upgrades[key] = Math.max(state.upgrades[key], 25);
+      });
+      message = 'Admin abuse: every online upgrade reached level 25.';
+      break;
+    case 'overdrive': {
+      const sharedEndTime = Date.parse(event.created_at || 0) + 60000;
+      state.adminBoostUntil = Math.max(state.adminBoostUntil, sharedEndTime);
+      window.clearTimeout(adminBoostTimer);
+      adminBoostTimer = window.setTimeout(() => {
+        renderGame();
+        renderAdminStatus('Overdrive ended. Production returned to normal.');
+      }, Math.max(0, sharedEndTime - Date.now()) + 50);
+      message = 'Admin abuse: x100 production is live for 60 seconds.';
+      break;
+    }
+    case 'allAchievements':
+      Object.keys(achievementDefinitions).forEach((key) => {
+        state.achievements[key] = true;
+      });
+      message = 'Admin abuse: every online PR board is complete.';
+      break;
+    default:
+      return false;
+  }
+
+  playWorldSound();
+  showNotification('Live Admin Event', message, 'info');
+  if (isAdmin() && !elements.adminModal.hidden) renderAdminStatus(message);
+  return true;
+}
+
+async function pollAdminEvents() {
+  if (!playerProfile || document.hidden || adminEventPollInFlight) return;
+  adminEventPollInFlight = true;
+  try {
+    if (!adminEventCursorReady && !await initializeAdminEventCursor()) return;
+    const session = await getActiveAuthSession();
+    if (!session) return;
+    const events = await supabaseRequest(`/rest/v1/admin_events?id=gt.${lastAdminEventId}&select=id,event_type,payload,created_at&order=id.asc&limit=50`, {
+      accessToken: session.access_token,
+    });
+    let gameChanged = false;
+    for (const event of Array.isArray(events) ? events : []) {
+      lastAdminEventId = Math.max(lastAdminEventId, Number(event.id) || 0);
+      gameChanged = applyOnlineAdminEvent(event) || gameChanged;
+    }
+    if (gameChanged) {
+      checkAchievements();
+      renderGame();
+      renderLeaderboard();
+      saveGame(false);
+    }
+  } catch (error) {
+    console.warn('Click Empire could not receive a live admin event.', error);
+  } finally {
+    adminEventPollInFlight = false;
+  }
+}
+
+async function startOnlineServices() {
+  window.clearInterval(presenceTimer);
+  window.clearInterval(adminEventTimer);
+  adminEventCursorReady = false;
+  await initializeAdminEventCursor();
+  await heartbeatOnlinePlayers();
+  presenceTimer = window.setInterval(heartbeatOnlinePlayers, PRESENCE_HEARTBEAT_INTERVAL);
+  adminEventTimer = window.setInterval(pollAdminEvents, ADMIN_EVENT_POLL_INTERVAL);
 }
 
 // ---------- Rendering ----------
@@ -1316,10 +1432,11 @@ function selectWorld(key) {
   startBackgroundMusic();
   renderGame();
   saveGame(false);
+  heartbeatOnlinePlayers();
   showNotification(`Entered ${world.name}`, `World production bonus set to x${formatNumber(world.multiplier)}.`, 'info');
 }
 
-// ---------- Local administrator controls ----------
+// ---------- Online administrator controls ----------
 
 function renderAdminStatus(message = '') {
   if (!isAdmin()) return;
@@ -1331,7 +1448,7 @@ function renderAdminStatus(message = '') {
   const remainingSeconds = Math.max(0, Math.ceil((state.adminBoostUntil - Date.now()) / 1000));
   elements.adminStatus.textContent = remainingSeconds > 0
     ? `Overdrive active · x100 production for ${remainingSeconds}s`
-    : 'Admin systems ready.';
+    : 'Live admin systems ready.';
 }
 
 function openAdmin() {
@@ -1349,71 +1466,79 @@ function closeAdmin() {
   modalPreviouslyFocused?.focus();
 }
 
-function runAdminAction(action) {
-  if (!isAdmin()) return;
-  let message = '';
+async function broadcastAdminEvent(eventType, payload = {}) {
+  const session = await getActiveAuthSession();
+  if (!session) throw new Error('Your admin session expired.');
+  const eventId = Number(await supabaseRequest('/rest/v1/rpc/broadcast_admin_event', {
+    method: 'POST',
+    accessToken: session.access_token,
+    body: {
+      p_event_type: eventType,
+      p_payload: payload,
+    },
+  }));
+  if (!adminEventCursorReady && eventId > 0) {
+    lastAdminEventId = eventId - 1;
+    adminEventCursorReady = true;
+  }
+  await pollAdminEvents();
+}
 
-  switch (action) {
-    case 'addMillion':
-      addCoins(1000000);
-      message = 'Added 1M coins to the treasury.';
-      break;
-    case 'addRebirth': {
-      state.rebirths += 1;
-      const unlockedWorld = Object.entries(worldDefinitions).find(([, world]) => world.requiredRebirths === state.rebirths);
-      if (unlockedWorld) state.selectedWorld = unlockedWorld[0];
-      message = `Rebirth count advanced to ${state.rebirths}.`;
-      break;
-    }
-    case 'spawnGolden':
-      window.clearTimeout(goldenCoinExpiryTimer);
-      activeGoldenCoin?.remove();
-      activeGoldenCoin = null;
-      closeAdmin();
-      spawnGoldenCoin();
-      message = 'Golden Coin event spawned.';
-      break;
-    case 'unlockWorlds':
-      state.rebirths = Math.max(state.rebirths, 25);
-      state.selectedWorld = 'olympusArena';
-      message = 'All worlds unlocked. Olympus Arena equipped.';
-      break;
-    case 'coinRain':
-      addCoins(1000000000000);
-      message = 'Admin abuse: 1T coins added.';
-      break;
-    case 'maxUpgrades':
-      Object.keys(state.upgrades).forEach((key) => {
-        state.upgrades[key] = 25;
-      });
-      message = 'Admin abuse: every upgrade set to level 25.';
-      break;
-    case 'overdrive':
-      state.adminBoostUntil = Date.now() + 60000;
-      window.clearTimeout(adminBoostTimer);
-      adminBoostTimer = window.setTimeout(() => {
-        renderGame();
-        renderAdminStatus('Overdrive ended. Production returned to normal.');
-      }, 60050);
-      message = 'Admin abuse: x100 production active for 60 seconds.';
-      break;
-    case 'allAchievements':
-      Object.keys(achievementDefinitions).forEach((key) => {
-        state.achievements[key] = true;
-      });
-      message = 'Admin abuse: every achievement completed.';
-      break;
-    default:
-      return;
+async function runAdminAction(action) {
+  if (!isAdmin() || adminRequestInFlight) return;
+  const allowedActions = new Set([
+    'addMillion',
+    'addRebirth',
+    'spawnGolden',
+    'unlockWorlds',
+    'coinRain',
+    'maxUpgrades',
+    'overdrive',
+    'allAchievements',
+  ]);
+  if (!allowedActions.has(action)) return;
+
+  adminRequestInFlight = true;
+  document.querySelectorAll('[data-admin-action]').forEach((button) => {
+    button.disabled = true;
+  });
+  renderAdminStatus('Broadcasting live admin event...');
+  try {
+    await broadcastAdminEvent(action);
+  } catch (error) {
+    console.warn('Click Empire could not broadcast the admin event.', error);
+    renderAdminStatus('Broadcast failed. Check the connection and try again.');
+  } finally {
+    adminRequestInFlight = false;
+    document.querySelectorAll('[data-admin-action]').forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
+async function broadcastAnnouncement() {
+  if (!isAdmin() || adminRequestInFlight) return;
+  const message = elements.adminAnnouncementInput.value.trim();
+  if (!message) {
+    renderAdminStatus('Write an announcement before sending.');
+    elements.adminAnnouncementInput.focus();
+    return;
   }
 
-  checkAchievements();
-  playWorldSound();
-  renderGame();
-  renderLeaderboard();
-  renderAdminStatus(message);
-  saveGame(false);
-  showNotification('Admin Action', message, 'info');
+  adminRequestInFlight = true;
+  elements.sendAnnouncementButton.disabled = true;
+  renderAdminStatus('Sending announcement to online players...');
+  try {
+    await broadcastAdminEvent('announcement', { message });
+    elements.adminAnnouncementInput.value = '';
+    renderAdminStatus('Announcement delivered to online players.');
+  } catch (error) {
+    console.warn('Click Empire could not broadcast the announcement.', error);
+    renderAdminStatus('Announcement failed. Check the connection and try again.');
+  } finally {
+    adminRequestInFlight = false;
+    elements.sendAnnouncementButton.disabled = false;
+  }
 }
 
 function gameTick(now) {
@@ -1720,7 +1845,7 @@ function updateSaveStatus() {
 
   window.setTimeout(() => {
     elements.saveIndicator.classList.remove('saving');
-    elements.saveText.textContent = playerProfile ? 'Cloud save active' : 'Sign in to save';
+    elements.saveText.textContent = playerProfile ? 'Cloud save active' : 'Choose a username to save';
   }, 600);
 }
 
@@ -1787,22 +1912,25 @@ function resetGame() {
 async function initializePlayerAccount() {
   const session = await restoreAuthSession();
   if (!session) {
-    showUsernameSetup('signup');
+    showUsernameSetup();
     return;
   }
 
   try {
     playerProfile = await fetchPlayerProfile();
-    if (!playerProfile) throw new Error('Player profile missing.');
+    if (!playerProfile) {
+      showUsernameSetup();
+      return;
+    }
     applyPlayerProfile();
     await loadCloudGame();
     await refreshLeaderboard();
+    await startOnlineServices();
   } catch (error) {
     console.warn('Click Empire could not restore the online account.', error);
-    persistAuthSession(null);
     playerProfile = null;
-    showUsernameSetup('signin');
-    setAuthMessage('Your session expired. Sign in again to continue.');
+    showUsernameSetup();
+    setAuthMessage('Could not reach your online locker. Check the connection and try again.');
   }
 }
 
@@ -1821,7 +1949,6 @@ elements.soundToggle.addEventListener('click', toggleSound);
 elements.musicToggle.addEventListener('click', toggleMusic);
 elements.saveButton.addEventListener('click', () => saveGame(true));
 elements.resetButton.addEventListener('click', resetGame);
-elements.signOutButton.addEventListener('click', signOutPlayer);
 elements.rebirthButton.addEventListener('click', performRebirth);
 elements.worldsButton.addEventListener('click', openWorlds);
 elements.closeWorlds.addEventListener('click', closeWorlds);
@@ -1830,13 +1957,12 @@ elements.closeLeaderboard.addEventListener('click', closeLeaderboard);
 elements.adminButton.addEventListener('click', openAdmin);
 elements.closeAdmin.addEventListener('click', closeAdmin);
 elements.usernameForm.addEventListener('submit', registerPlayer);
-document.querySelectorAll('[data-auth-mode]').forEach((button) => {
-  button.addEventListener('click', () => setAuthMode(button.dataset.authMode));
-});
-[elements.usernameInput, elements.emailInput, elements.passwordInput].forEach((input) => {
+elements.sendAnnouncementButton.addEventListener('click', broadcastAnnouncement);
+[elements.usernameInput, elements.adminCodeInput].forEach((input) => {
   input.addEventListener('input', () => {
     setAuthMessage('');
     elements.usernameInput.setAttribute('aria-invalid', 'false');
+    if (input === elements.usernameInput) updateAdminClaimField();
   });
 });
 
@@ -1879,6 +2005,8 @@ document.addEventListener('visibilitychange', () => {
     stopBackgroundMusic();
   } else {
     startBackgroundMusic();
+    heartbeatOnlinePlayers();
+    pollAdminEvents();
   }
 });
 

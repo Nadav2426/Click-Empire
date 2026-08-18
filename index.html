@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#080b1a">
+  <meta name="theme-color" content="#171713">
   <meta name="description" content="Put in the reps and build your Click Empire.">
   <title>Click Empire</title>
   <link rel="stylesheet" href="style.css">
@@ -26,6 +26,11 @@
         <div class="save-indicator" id="saveIndicator" aria-live="polite">
           <span class="save-dot"></span>
           <span id="saveText">Progress saved</span>
+        </div>
+        <div class="online-player-pill" title="Players active in the last 90 seconds" aria-label="Online players">
+          <i aria-hidden="true"></i>
+          <span>ONLINE</span>
+          <strong id="onlinePlayerCount">—</strong>
         </div>
         <button class="profile-button" id="leaderboardButton" type="button" aria-label="Open player profile and leaderboard">
           <span class="profile-avatar" id="profileInitial" aria-hidden="true">?</span>
@@ -210,10 +215,10 @@
       <button class="modal-close" id="closeSettings" type="button" aria-label="Close settings">×</button>
       <span class="eyebrow">LOCKER ROOM</span>
       <h2 id="settingsTitle">Game Settings</h2>
-      <p>Your progress is saved automatically to your Click Empire account.</p>
+      <p>Your progress is saved automatically to this device account and the cloud.</p>
       <div class="profile-lock-note">
         <span class="profile-avatar" id="settingsProfileInitial" aria-hidden="true">?</span>
-        <span><small>ONLINE ATHLETE PROFILE</small><strong id="settingsProfileName">Player</strong><em id="settingsProfileEmail"></em></span>
+        <span><small>ONLINE ATHLETE PROFILE</small><strong id="settingsProfileName">Player</strong><em id="settingsProfileDevice">Device account · cloud connected</em></span>
       </div>
       <button class="settings-action sound-action" id="soundToggle" type="button" aria-pressed="true">
         <span aria-hidden="true">♪</span>
@@ -233,10 +238,6 @@
         <span aria-hidden="true">↻</span>
         <span><strong>Reset Game</strong><small>Delete progress; your username stays locked</small></span>
       </button>
-      <button class="settings-action signout-action" id="signOutButton" type="button">
-        <span aria-hidden="true">⇥</span>
-        <span><strong>Sign Out</strong><small>Keep your username and cloud progress</small></span>
-      </button>
       <small class="save-meta" id="saveMeta">No manual save yet</small>
     </section>
   </div>
@@ -254,15 +255,11 @@
   <div class="modal-backdrop onboarding-backdrop" id="usernameModal" hidden>
     <section class="username-modal" role="dialog" aria-modal="true" aria-labelledby="usernameTitle">
       <div class="username-emblem" aria-hidden="true">CE</div>
-      <span class="eyebrow" id="authEyebrow">ONLINE ATHLETE REGISTRATION</span>
+      <span class="eyebrow">ONLINE ATHLETE REGISTRATION</span>
       <h2 id="usernameTitle">Claim your locker.</h2>
-      <p id="authDescription">Create an account and choose carefully. Each username can belong to only one player worldwide and cannot be changed.</p>
-      <div class="auth-mode-tabs" role="tablist" aria-label="Account action">
-        <button type="button" class="is-active" id="signUpTab" data-auth-mode="signup" role="tab" aria-selected="true">NEW ATHLETE</button>
-        <button type="button" id="signInTab" data-auth-mode="signin" role="tab" aria-selected="false">SIGN IN</button>
-      </div>
+      <p>Choose carefully. Each username can belong to only one player worldwide and cannot be changed.</p>
       <form id="usernameForm" novalidate>
-        <div class="auth-field" id="usernameField">
+        <div class="auth-field">
           <label for="usernameInput">PERMANENT USERNAME</label>
           <div class="username-input-row">
             <span aria-hidden="true">@</span>
@@ -270,24 +267,17 @@
           </div>
           <small class="username-rules">3–16 characters · letters, numbers, and underscores · case-insensitive unique</small>
         </div>
-        <div class="auth-field">
-          <label for="emailInput">EMAIL</label>
-          <div class="username-input-row auth-text-input">
-            <span aria-hidden="true">✉</span>
-            <input id="emailInput" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
-          </div>
-        </div>
-        <div class="auth-field">
-          <label for="passwordInput">PASSWORD</label>
+        <div class="auth-field" id="adminCodeField" hidden>
+          <label for="adminCodeInput">ONE-TIME ADMIN CLAIM CODE</label>
           <div class="username-input-row auth-text-input">
             <span aria-hidden="true">◆</span>
-            <input id="passwordInput" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required>
+            <input id="adminCodeInput" name="adminCode" type="password" autocomplete="off" placeholder="Admin code">
           </div>
         </div>
         <p class="username-error" id="usernameError" role="alert"></p>
-        <button class="username-submit" id="authSubmit" type="submit">CREATE ACCOUNT &amp; LOCK USERNAME</button>
+        <button class="username-submit" id="authSubmit" type="submit">CLAIM USERNAME &amp; START</button>
       </form>
-      <small class="local-profile-note" id="authNote">Secure online account · one permanent username per player account</small>
+      <small class="local-profile-note">No email or password. This browser keeps your account; clearing its site data will remove access from this device.</small>
     </section>
   </div>
 
@@ -312,31 +302,43 @@
       <button class="modal-close" id="closeAdmin" type="button" aria-label="Close admin panel">×</button>
       <span class="eyebrow">THEBRADAR · AUTHORIZED</span>
       <h2 id="adminTitle">Admin Control Room</h2>
-      <p>Local game controls for testing progression and events.</p>
+      <p>Live controls broadcast to every player currently online.</p>
+
+      <section class="admin-section announcement-section" aria-labelledby="announcementTitle">
+        <div class="admin-section-heading">
+          <span aria-hidden="true">A</span>
+          <div><small>LIVE MESSAGE</small><strong id="announcementTitle">Online Announcement</strong></div>
+        </div>
+        <div class="announcement-composer">
+          <textarea id="adminAnnouncementInput" maxlength="180" rows="3" placeholder="Write an announcement for all online players..."></textarea>
+          <button id="sendAnnouncementButton" type="button">ANNOUNCE</button>
+        </div>
+        <small class="announcement-limit">Up to 180 characters · delivered live</small>
+      </section>
 
       <section class="admin-section" aria-labelledby="adminToolsTitle">
         <div class="admin-section-heading">
           <span aria-hidden="true">◆</span>
-          <div><small>SAFE CONTROLS</small><strong id="adminToolsTitle">Admin Panel</strong></div>
+          <div><small>ONLINE CONTROLS</small><strong id="adminToolsTitle">Admin Panel</strong></div>
         </div>
         <div class="admin-grid">
-          <button type="button" data-admin-action="addMillion"><strong>+1M Coins</strong><small>Add training funds</small></button>
-          <button type="button" data-admin-action="addRebirth"><strong>+1 Rebirth</strong><small>Advance progression</small></button>
-          <button type="button" data-admin-action="spawnGolden"><strong>Golden Coin</strong><small>Spawn event now</small></button>
-          <button type="button" data-admin-action="unlockWorlds"><strong>Unlock Worlds</strong><small>Reach 25 rebirths</small></button>
+          <button type="button" data-admin-action="addMillion"><strong>+1M Coins</strong><small>Give everyone training funds</small></button>
+          <button type="button" data-admin-action="addRebirth"><strong>+1 Rebirth</strong><small>Advance everyone online</small></button>
+          <button type="button" data-admin-action="spawnGolden"><strong>Golden Coin</strong><small>Spawn for everyone online</small></button>
+          <button type="button" data-admin-action="unlockWorlds"><strong>Unlock Worlds</strong><small>Unlock for everyone online</small></button>
         </div>
       </section>
 
       <section class="admin-section abuse-section" aria-labelledby="abuseToolsTitle">
         <div class="admin-section-heading">
           <span aria-hidden="true">!</span>
-          <div><small>EXTREME LOCAL CONTROLS</small><strong id="abuseToolsTitle">Admin Abuse Panel</strong></div>
+          <div><small>EXTREME ONLINE CONTROLS</small><strong id="abuseToolsTitle">Admin Abuse Panel</strong></div>
         </div>
         <div class="admin-grid">
-          <button type="button" data-admin-action="coinRain"><strong>+1T Coin Rain</strong><small>Flood the treasury</small></button>
-          <button type="button" data-admin-action="maxUpgrades"><strong>Max Upgrades</strong><small>Set every level to 25</small></button>
-          <button type="button" data-admin-action="overdrive"><strong>x100 Overdrive</strong><small>All income for 60 seconds</small></button>
-          <button type="button" data-admin-action="allAchievements"><strong>All Achievements</strong><small>Complete the PR board</small></button>
+          <button type="button" data-admin-action="coinRain"><strong>+1T Coin Rain</strong><small>Flood every online treasury</small></button>
+          <button type="button" data-admin-action="maxUpgrades"><strong>Max Upgrades</strong><small>Set all online levels to 25</small></button>
+          <button type="button" data-admin-action="overdrive"><strong>x100 Overdrive</strong><small>All online income for 60 seconds</small></button>
+          <button type="button" data-admin-action="allAchievements"><strong>All Achievements</strong><small>Complete every online PR board</small></button>
         </div>
       </section>
       <p class="admin-status" id="adminStatus" aria-live="polite">Admin systems ready.</p>
