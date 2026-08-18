@@ -1473,6 +1473,35 @@ footer {
   transition: 160ms ease;
 }
 
+.online-player-pill {
+  display: flex;
+  height: 40px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 6px;
+  color: #aaa697;
+  border: 2px solid rgba(230, 221, 193, 0.16);
+  border-radius: 4px;
+  background: #20201c;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.online-player-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8ea36d;
+  box-shadow: 0 0 0 3px rgba(142, 163, 109, 0.12);
+}
+
+.online-player-pill strong {
+  color: #d7d1bf;
+  font-size: 11px;
+}
+
 .profile-button {
   max-width: 145px;
   padding: 4px 10px 4px 5px;
@@ -2064,6 +2093,12 @@ footer {
   transform: translateY(-1px);
 }
 
+.admin-grid button:disabled {
+  cursor: wait;
+  opacity: 0.48;
+  transform: none;
+}
+
 .abuse-section .admin-grid button {
   border-color: rgba(190, 77, 55, 0.23);
   background: #30201c;
@@ -2104,7 +2139,82 @@ footer {
   text-transform: uppercase;
 }
 
+.announcement-section {
+  border-left-color: #d1a24d;
+}
+
+.announcement-section .admin-section-heading > span {
+  color: #211a12;
+  background: #d1a24d;
+  font-family: "Arial Narrow", Impact, sans-serif;
+}
+
+.announcement-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 8px;
+}
+
+.announcement-composer textarea {
+  min-height: 68px;
+  padding: 10px;
+  resize: vertical;
+  color: #eee7d6;
+  border: 2px solid rgba(230, 221, 193, 0.16);
+  border-radius: 3px;
+  outline: 0;
+  background: #181815;
+  font: 10px/1.45 "Segoe UI", Arial, sans-serif;
+}
+
+.announcement-composer textarea:focus {
+  border-color: #d1a24d;
+}
+
+.announcement-composer button {
+  color: #211a12;
+  border: 2px solid #e1b760;
+  border-radius: 3px;
+  background: #ce9845;
+  box-shadow: 3px 3px 0 #11110f;
+  cursor: pointer;
+  font-family: "Arial Narrow", Impact, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.announcement-composer button:hover,
+.announcement-composer button:focus-visible {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.announcement-composer button:disabled {
+  cursor: wait;
+  filter: grayscale(0.6);
+  opacity: 0.55;
+}
+
+.announcement-limit {
+  display: block;
+  margin-top: 6px;
+  color: #77746a;
+  font-size: 7px;
+}
+
 @media (max-width: 760px) {
+  .online-player-pill {
+    width: 42px;
+    padding: 0;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .online-player-pill span {
+    display: none;
+  }
+
   .profile-button {
     width: 40px;
     padding: 4px;
@@ -2158,6 +2268,14 @@ footer {
 
   .admin-grid {
     grid-template-columns: 1fr;
+  }
+
+  .announcement-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .announcement-composer button {
+    min-height: 40px;
   }
 }
 
